@@ -137,3 +137,32 @@ def test_user_model_relationships(
         assert (
             rel.secondary is not None
         )  # Requires an association table linking user_id and role_id[cite: 1]
+
+
+class RoleKwargs(TypedDict):
+    id: uuid.UUID
+    name: str
+    description: str | None
+
+
+@pytest.fixture
+def role_kwargs() -> RoleKwargs:
+    """Fixture providing valid keyword arguments for Role model instantiation."""
+    return {
+        "id": uuid.uuid7(),
+        "name": "Senior",
+        "description": "Can validate questionable melt curves.",
+    }
+
+
+@pytest.fixture
+def role_instance(role_kwargs) -> Role:
+    """Fixture returning an instantiated Role model."""
+    return Role(**role_kwargs)
+
+
+def test_role_model_instantiation(role_instance: Role, role_kwargs: RoleKwargs) -> None:
+    """Test that the Role model instantiates correctly with provided kwargs."""
+    assert role_instance.id == role_kwargs["id"]
+    assert role_instance.name == role_kwargs["name"]
+    assert role_instance.description == role_kwargs["description"]
