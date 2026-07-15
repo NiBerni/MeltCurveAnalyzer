@@ -62,7 +62,7 @@ def test_user_model_columns() -> None:
     Inspect the User model to ensure SQLAlchemy 2.1 mapped_column configs
     match domain constraints.[cite: 4]
     """
-    mapper: Mapper = inspect(User)
+    mapper: Mapper = User.__mapper__
     columns = mapper.columns
 
     # Test 'id' column constraints
@@ -124,7 +124,7 @@ def test_user_model_relationships(
     """
     Inspect the User model to ensure SQLAlchemy relationships are accurately defined.
     """
-    mapper: Mapper = inspect(User)
+    mapper: Mapper = User.__mapper__
     relationships = mapper.relationships
 
     assert relationship_name in relationships
