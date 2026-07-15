@@ -64,9 +64,6 @@ def __repr__(self) -> str:
 # --- TDD Stubs  ---
 
 
-# --- TDD Stubs (Platzhalter für noch kommende Modelle) ---
-
-
 class PcrRun(Base):
     __tablename__ = "pcr_runs"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
