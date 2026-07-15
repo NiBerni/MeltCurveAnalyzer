@@ -2,7 +2,6 @@ import uuid
 from typing import TypedDict
 
 import pytest
-from sqlalchemy import inspect
 from sqlalchemy.orm import Mapper
 from sqlalchemy.sql.sqltypes import Boolean, String, Uuid
 
