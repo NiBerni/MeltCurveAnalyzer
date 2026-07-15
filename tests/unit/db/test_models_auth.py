@@ -1,16 +1,24 @@
 import uuid
-from typing import Any
+from typing import TypedDict
 
 import pytest
 from sqlalchemy import inspect
 from sqlalchemy.orm import Mapper
 from sqlalchemy.sql.sqltypes import Boolean, String, Uuid
 
-from app.db.models import User
+from app.db.models import Role, User
+
+
+class UserKwargs(TypedDict):
+    id: uuid.UUID
+    username: str
+    email: str
+    password_hash: str
+    is_active: bool
 
 
 @pytest.fixture
-def user_kwargs() -> dict[str, Any]:
+def user_kwargs() -> UserKwargs:
     """Fixture providing valid keyword arguments for User model instantiation."""
     return {
         "id": uuid.uuid7(),  # Primary keys must use native PostgreSQL UUIDs generated via UUIDv7[cite: 1]
@@ -22,14 +30,12 @@ def user_kwargs() -> dict[str, Any]:
 
 
 @pytest.fixture
-def user_instance(user_kwargs: dict[str, Any]) -> User:
+def user_instance(user_kwargs: UserKwargs) -> User:
     """Fixture returning an instantiated User model."""
     return User(**user_kwargs)
 
 
-def test_user_model_instantiation(
-    user_instance: User, user_kwargs: dict[str, Any]
-) -> None:
+def test_user_model_instantiation(user_instance: User, user_kwargs: UserKwargs) -> None:
     """
     Test that the User model instantiates correctly and attribute mapping
     behaves as expected without a database connection.
