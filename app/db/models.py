@@ -64,7 +64,7 @@ def __repr__(self) -> str:
 # --- TDD Stubs  ---
 
 
-class PcrRun(Base):
+class PcrRun(Base):  # TODO refactor after tests are written
     __tablename__ = "pcr_runs"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
@@ -72,7 +72,7 @@ class PcrRun(Base):
     operator: Mapped["User"] = relationship(back_populates="pcr_runs")
 
 
-class SampleResult(Base):
+class SampleResult(Base):  # TODO refactor after tests are written
     __tablename__ = "sample_results"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
@@ -81,9 +81,24 @@ class SampleResult(Base):
 
 
 class Role(Base):
+    """
+    Role entity defining specific privileges within the PCR LIMS application.
+    Part of the Identity & Access Management (IAM) / RBAC architecture.[cite: 1, 2]
+    """
+
     __tablename__ = "roles"
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
+
+    id: Mapped[str] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7())
+
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
 
     users: Mapped[list["User"]] = relationship(
-        secondary=user_roles, back_populates="roles"
+        "User", secondary=user_roles, back_populates="roles"
     )
+
+    def __repr__(self) -> str:
+        """
+        Standard f-string implementation for debuggin/logging purposes.
+        """
+        return f'<Role(id={self.id}, name="{self.name}")>'
