@@ -1,19 +1,27 @@
 import uuid
-from typing import Any
+from typing import TypedDict
 
 import pytest
-from sqlalchemy import inspect
 from sqlalchemy.orm import Mapper
 from sqlalchemy.sql.sqltypes import Boolean, String, Uuid
 
-from app.db.models import User
+from app.db.models import Role, User
+
+
+class UserKwargs(TypedDict):
+    id: uuid.UUID
+    username: str
+    email: str
+    password_hash: str
+    is_active: bool
 
 
 @pytest.fixture
-def user_kwargs() -> dict[str, Any]:
+def user_kwargs() -> UserKwargs:
     """Fixture providing valid keyword arguments for User model instantiation."""
     return {
-        "id": uuid.uuid7(),  # Primary keys must use native PostgreSQL UUIDs generated via UUIDv7[cite: 1]
+        "id": uuid.uuid7(),
+        # Primary keys must use native PostgreSQL UUIDs generated via UUIDv7[cite: 1]
         "username": "jdoe_senior",  # Expected String[cite: 1]
         "email": "jdoe@example.com",  # Expected String[cite: 1]
         "password_hash": "secure_hash_string",  # Expected String[cite: 1]
@@ -22,14 +30,12 @@ def user_kwargs() -> dict[str, Any]:
 
 
 @pytest.fixture
-def user_instance(user_kwargs: dict[str, Any]) -> User:
+def user_instance(user_kwargs: UserKwargs) -> User:
     """Fixture returning an instantiated User model."""
     return User(**user_kwargs)
 
 
-def test_user_model_instantiation(
-    user_instance: User, user_kwargs: dict[str, Any]
-) -> None:
+def test_user_model_instantiation(user_instance: User, user_kwargs: UserKwargs) -> None:
     """
     Test that the User model instantiates correctly and attribute mapping
     behaves as expected without a database connection.
@@ -56,7 +62,7 @@ def test_user_model_columns() -> None:
     Inspect the User model to ensure SQLAlchemy 2.1 mapped_column configs
     match domain constraints.[cite: 4]
     """
-    mapper: Mapper = inspect(User)
+    mapper: Mapper = User.__mapper__
     columns = mapper.columns
 
     # Test 'id' column constraints
@@ -118,7 +124,7 @@ def test_user_model_relationships(
     """
     Inspect the User model to ensure SQLAlchemy relationships are accurately defined.
     """
-    mapper: Mapper = inspect(User)
+    mapper: Mapper = User.__mapper__
     relationships = mapper.relationships
 
     assert relationship_name in relationships
@@ -132,3 +138,88 @@ def test_user_model_relationships(
         assert (
             rel.secondary is not None
         )  # Requires an association table linking user_id and role_id[cite: 1]
+
+
+class RoleKwargs(TypedDict):
+    id: uuid.UUID
+    name: str
+    description: str | None
+
+
+@pytest.fixture
+def role_kwargs() -> RoleKwargs:
+    """Fixture providing valid keyword arguments for Role model instantiation."""
+    return {
+        "id": uuid.uuid7(),
+        "name": "Senior",
+        "description": "Can validate questionable melt curves.",
+    }
+
+
+@pytest.fixture
+def role_instance(role_kwargs) -> Role:
+    """Fixture returning an instantiated Role model."""
+    return Role(**role_kwargs)
+
+
+def test_role_model_instantiation(role_instance: Role, role_kwargs: RoleKwargs) -> None:
+    """Test that the Role model instantiates correctly with provided kwargs."""
+    assert role_instance.id == role_kwargs["id"]
+    assert role_instance.name == role_kwargs["name"]
+    assert role_instance.description == role_kwargs["description"]
+
+
+def test_role_model_columns() -> None:
+    """
+    Inspect the Role model to ensure SQLAlchemy mapped_column configs match domain constraints. [cite: 3,6]
+    """
+    mapper: Mapper = Role.__mapper__
+    columns = mapper.columns
+
+    # Test "id" constraints
+    assert "id" in columns
+    assert columns["id"].primary_key is True
+    assert isinstance(columns["id"].type, Uuid)
+
+    # Test 'name' column constraints
+    assert "name" in columns
+    assert columns["name"].unique is True
+    assert isinstance(columns["name"].type, String)
+    assert (
+        columns["name"].nullable is False
+    )  # Implicit constraint for Mapped[str][cite: 6]
+
+    # Test "description" column constraints
+    assert "description" in columns
+    assert isinstance(
+        columns["description"].type, String
+    )  # description is a String[cite: 3]
+    assert (
+        columns["description"].nullable is True
+    )  # description is Nullable / Mapped[str | None][cite: 3, 6]
+
+
+@pytest.mark.parametrize(
+    "relationship_name, expected_target_type",
+    [
+        (
+            "users",
+            "Many-to-Many",
+        )
+    ],
+)
+def test_role_model_relationships(
+    relationship_name: str, expected_target_type: str
+) -> None:
+    """
+    Inspect the Role model to ensure SQLAlchemy relationships are accurately defined.
+    """
+    mapper: Mapper = Role.__mapper__
+    relationships = mapper.relationships
+
+    assert relationship_name in relationships
+
+    rel = relationships[relationship_name]
+    if expected_target_type == "Many-to-Many":
+        assert rel.uselist is True
+        assert rel.secondary is not None
