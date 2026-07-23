@@ -37,26 +37,24 @@ class User(Base):
 
     __tablename__ = "users"
 
-    # Identity[cite: 1, 2]
+    # Identity
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
-    # Core Attributes[cite: 1, 2]
+    # Core Attributes
     username: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    # Relationships[cite: 1]
-
-    # One-to-Many: User as an operator of PCR Runs[cite: 1, 2]
+    # One-to-Many: User as an operator of PCR Runs
     pcr_runs: Mapped[list["PcrRun"]] = relationship("PcrRun", back_populates="operator")
 
-    # One-toMany: User as the technical validator of sample results[cite: 1, 2]
+    # One-toMany: User as the technical validator of sample results
     sample_results: Mapped[list["SampleResult"]] = relationship(
         "SampleResult", back_populates="tech_validated_by"
     )
 
-    # Many-to-Many: User's assigned roles (Admin, TA, AL, Arzt, ...) via user_roles[cite: 1, 2]
+    # Many-to-Many: User's assigned roles (Admin, TA, AL, Arzt, ...) via user_roles
     roles: Mapped[list["Role"]] = relationship(
         "Role", secondary=user_roles, back_populates="users"
     )
@@ -66,10 +64,7 @@ class User(Base):
         return f'<User(id={self.id}, username="{self.username}",  is_active={self.is_active})>'
 
 
-# --- TDD Stubs  ---
-
-
-class PcrRun(Base):  # TODO refactor after tests are written
+class PcrRun(Base):
     __tablename__ = "pcr_runs"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
@@ -77,7 +72,7 @@ class PcrRun(Base):  # TODO refactor after tests are written
     operator: Mapped["User"] = relationship(back_populates="pcr_runs")
 
 
-class SampleResult(Base):  # TODO refactor after tests are written
+class SampleResult(Base):
     __tablename__ = "sample_results"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
