@@ -1,6 +1,5 @@
 import uuid
 
-import pytest
 from sqlalchemy.orm import Session
 
 from app.db.models import PcrRun, User
@@ -38,7 +37,7 @@ def test_repository_get_run_by_identifier(
         raw_operator=" John Doe",
         imported_by_id=user_instance.id,
     )
-    fetched_run = repo.get_by_identifier("RUN-2026TEST02")
+    fetched_run = repo.get_by_identifier("RUN-2026-TEST02")
 
     assert fetched_run is not None
     assert isinstance(fetched_run, PcrRun)
