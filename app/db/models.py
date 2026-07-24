@@ -22,6 +22,14 @@ user_roles = Table(
 )
 
 
+role_permissions = Table(
+    "role_permission",
+    Base.metadata,
+    Column("role_id", Uuid, ForeignKey("roles.id"), primary_key=True),
+    Column("permission_id", Uuid, ForeignKey("permissions.id"), primary_key=True),
+)
+
+
 class User(Base):
     """
     User entity handling IAM / RBAC operations for the PCR LIMS application.
@@ -29,42 +37,34 @@ class User(Base):
 
     __tablename__ = "users"
 
-    # Identity[cite: 1, 2]
+    # Identity
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
-    # Core Attributes[cite: 1, 2]
+    # Core Attributes
     username: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    # Relationships[cite: 1]
-
-    # One-to-Many: User as an operator of PCR Runs[cite: 1, 2]
+    # One-to-Many: User as an operator of PCR Runs
     pcr_runs: Mapped[list["PcrRun"]] = relationship("PcrRun", back_populates="operator")
 
-    # One-toMany: User as the technical validator of sample results[cite: 1, 2]
+    # One-toMany: User as the technical validator of sample results
     sample_results: Mapped[list["SampleResult"]] = relationship(
         "SampleResult", back_populates="tech_validated_by"
     )
 
-    # Many-to-Many: User's assigned roles (Admin, TA, AL, Arzt, ...) via user_roles[cite: 1, 2]
+    # Many-to-Many: User's assigned roles (Admin, TA, AL, Arzt, ...) via user_roles
     roles: Mapped[list["Role"]] = relationship(
         "Role", secondary=user_roles, back_populates="users"
     )
 
-
-def __repr__(self) -> str:
-    """Standard f-string implementation for debugging/logging purposes."""
-    return (
-        f'<User(id={self.id}, username="{self.username}",  is_active={self.is_active})>'
-    )
+    def __repr__(self) -> str:
+        """Standard f-string implementation for debugging/logging purposes."""
+        return f'<User(id={self.id}, username="{self.username}",  is_active={self.is_active})>'
 
 
-# --- TDD Stubs  ---
-
-
-class PcrRun(Base):  # TODO refactor after tests are written
+class PcrRun(Base):
     __tablename__ = "pcr_runs"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
@@ -72,7 +72,7 @@ class PcrRun(Base):  # TODO refactor after tests are written
     operator: Mapped["User"] = relationship(back_populates="pcr_runs")
 
 
-class SampleResult(Base):  # TODO refactor after tests are written
+class SampleResult(Base):
     __tablename__ = "sample_results"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
@@ -83,12 +83,12 @@ class SampleResult(Base):  # TODO refactor after tests are written
 class Role(Base):
     """
     Role entity defining specific privileges within the PCR LIMS application.
-    Part of the Identity & Access Management (IAM) / RBAC architecture.[cite: 1, 2]
+    Part of the Identity & Access Management (IAM) / RBAC architecture.
     """
 
     __tablename__ = "roles"
 
-    id: Mapped[str] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7())
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -97,8 +97,36 @@ class Role(Base):
         "User", secondary=user_roles, back_populates="roles"
     )
 
+    permissions: Mapped[list["Permission"]] = relationship(
+        "Permission", secondary=role_permissions, back_populates="roles"
+    )
+
     def __repr__(self) -> str:
         """
-        Standard f-string implementation for debuggin/logging purposes.
+        Standard f-string implementation for debugging/logging purposes.
         """
         return f'<Role(id={self.id}, name="{self.name}")>'
+
+
+class Permission(Base):
+    """
+    Permission entity defining specific granular access rights within the application.
+    Part of the Identity & Access Management (IAM) / RBAC architecture.
+    """
+
+    __tablename__ = "permissions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
+
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    roles: Mapped[list["Role"]] = relationship(
+        "Role", secondary=role_permissions, back_populates="permissions"
+    )
+
+    def __repr__(self) -> str:
+        """
+        Standard f-string implementation for debugging/logging purposes.
+        """
+        return f'<Permission(id={self.id}, name="{self.name}")>'
