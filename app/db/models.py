@@ -5,6 +5,7 @@ Database models for the Identity & Access Management (IAM) layer.
 import uuid
 
 from sqlalchemy import Boolean, Column, ForeignKey, String, Table, Uuid
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -123,7 +124,7 @@ class PcrRun(Base):
     PcrRun entity handling the ingestion state of a batch of PCR samples.
     """
 
-    __tablename__ = "pcr_run"
+    __tablename__ = "pcr_runs"
 
     # Identity
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
@@ -152,7 +153,27 @@ class PcrRun(Base):
         return f'<PcrRun(id={self.id}, run_identifier="{self.run_identifier}")>'
 
 
-class SampleResult(Base):
+class Sample(Base):
+    """
+    SQLAlchemy model representing a sample/well within a PCR run.
+    """
+
+    __tablename__ = "samples"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    pcr_run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pcr_runs.id"), nullable=False
+    )
+    well_position: Mapped[str] = mapped_column(String, nullable=False)
+
+    # Relationships
+    pcr_run: Mapped["PcrRun"] = relationship(back_populates="samples")
+    melt_curves: Mapped[list["MeltCurve"]] = relationship(
+        back_populates="sample", cascade="all, delete-orphan"
+    )
+
+
+class SampleResult(Base):  # TODO implement fully later on
     __tablename__ = "sample_results"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
