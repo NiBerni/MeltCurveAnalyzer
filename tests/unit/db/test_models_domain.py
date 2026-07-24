@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import Mapper
 
-from app.db.models import PcrRun
+from app.db.models import PcrRun, Sample
 
 
 class PcrRunKwargs(TypedDict, total=False):
@@ -16,6 +16,12 @@ class PcrRunKwargs(TypedDict, total=False):
     imported_by_id: uuid.UUID
 
 
+class SampleKwargs(TypedDict, total=False):
+    id: uuid.UUID
+    pcr_run_id: uuid.UUID
+    well_position: str
+
+
 @pytest.fixture
 def pcr_run_kwargs() -> PcrRunKwargs:
     return {
@@ -24,6 +30,15 @@ def pcr_run_kwargs() -> PcrRunKwargs:
         "device_id": "CYCLER-01",
         "raw_operator": "Jane Doe",
         "imported_by_id": uuid.uuid7(),
+    }
+
+
+@pytest.fixture
+def sample_kwargs() -> SampleKwargs:
+    return {
+        "id": uuid.uuid7(),
+        "pcr_run_id": uuid.uuid7(),
+        "well_position": "A01",
     }
 
 
@@ -87,3 +102,38 @@ def test_pcr_run_relationships() -> None:
     assert relationships.samples.uselist is True
     assert relationships.samples.cascade.delete is True
     assert relationships.samples.cascade.delete_orphan is True
+
+
+# ==============================================================================
+# Tests for Sample Model
+# ==============================================================================
+
+
+def test_sample_instantiation(sample_kwargs: SampleKwargs) -> None:
+    sample = Sample(**sample_kwargs)
+
+    assert sample.id == sample_kwargs["id"]
+    assert sample.pcr_run_id == sample_kwargs["pcr_run_id"]
+    assert sample.wll_position == sample_kwargs["well_position"]
+
+
+def test_sample_columns() -> None:
+    mapper: Mapper[Sample] = inspect(Sample)
+    columns = mapper.columns
+
+    assert columns.id.primary_key is True
+    assert columns.pcr_run_id.nullable is False
+    assert columns.well_position.nullable is False
+
+
+def test_sample_relationships() -> None:
+    mapper: Mapper[Sample] = inspect(Sample)
+    relationships = mapper.relationships
+
+    assert "pcr_run" in relationships
+    assert relationships.pcr_run.uselist is False
+
+    assert "melt_curves" in relationships
+    assert relationships.melt_curves.uselist is True
+    assert relationships.melt_curves.cascade.delete is True
+    assert relationships.melt_curves.cascade.delete_orphan is True
