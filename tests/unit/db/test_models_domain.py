@@ -135,7 +135,7 @@ def test_sample_instantiation(sample_kwargs: SampleKwargs) -> None:
 
     assert sample.id == sample_kwargs["id"]
     assert sample.pcr_run_id == sample_kwargs["pcr_run_id"]
-    assert sample.wll_position == sample_kwargs["well_position"]
+    assert sample.well_position == sample_kwargs["well_position"]
 
 
 def test_sample_columns() -> None:

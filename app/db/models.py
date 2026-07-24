@@ -4,7 +4,7 @@ Database models for the Identity & Access Management (IAM) layer.
 
 import uuid
 
-from sqlalchemy import Boolean, Column, ForeignKey, String, Table, Uuid
+from sqlalchemy import Boolean, Column, Float, ForeignKey, String, Table, Uuid
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -171,6 +171,20 @@ class Sample(Base):
     melt_curves: Mapped[list["MeltCurve"]] = relationship(
         back_populates="sample", cascade="all, delete-orphan"
     )
+
+
+class MeltCurve(Base):
+    __tablename__ = "melt_curves"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
+    sample_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("samples.id"), nullable=False
+    )
+    target_channel: Mapped[str] = mapped_column(String, nullable=False)
+    temperatures: Mapped[list[float]] = mapped_column(ARRAY(Float), nullable=False)
+    raw_fluorescence: Mapped[list[float]] = mapped_column(ARRAY(Float), nullable=False)
+
+    sample: Mapped["Sample"] = relationship("Sample", back_populates="melt_curves")
 
 
 class SampleResult(Base):  # TODO implement fully later on
