@@ -1,5 +1,5 @@
 import uuid
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import pytest
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -7,7 +7,7 @@ from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import Mapper
 from sqlalchemy.types import Float
 
-from app.db.models import MeltCurve, PcrRun, Sample
+from app.db.models import MeltCurve, PcrRun, Sample, SampleResult
 
 
 class PcrRunKwargs(TypedDict, total=False):
@@ -30,6 +30,15 @@ class MeltCurveKwargs(TypedDict, total=False):
     target_channel: str
     temperatures: list[float]
     raw_fluorescence: list[float]
+
+
+class SampleResultKwargs(TypedDict, total=False):
+    id: uuid.UUID
+    sample_id: uuid.UUID
+    target_name: str
+    algo_is_positive: bool
+    algo_tm_peaks: list[float]
+    cluster_label: str
 
 
 @pytest.fixture
@@ -60,6 +69,18 @@ def melt_curve_kwargs() -> MeltCurveKwargs:
         "target_channel": "FAM",
         "temperatures": [60.0, 60.5, 61.0, 61.5, 62.0],
         "raw_fluorescence": [100.5, 98.2, 85.1, 50.4, 10.0],
+    }
+
+
+@pytest.fixture
+def sample_result_kwargs() -> SampleResultKwargs:
+    return {
+        "id": uuid.uuid7(),
+        "sample_id": uuid.uuid7(),
+        "target_name": "SARS-CoV-2",
+        "algo_is_positive": True,
+        "algo_tm_peaks": [82.5, 84.0],
+        "cluster_label": "Wildtype",
     }
 
 
@@ -198,3 +219,63 @@ def test_melt_curve_relationships() -> None:
 
     assert "sample" in relationships
     assert relationships.sample.uselist is False
+
+
+# ==============================================================================
+# Tests for SampleResult Model
+# ==============================================================================
+
+
+def test_sample_result_instantiation_and_defaults(
+    sample_result_kwargs: SampleResultKwargs,
+) -> None:
+    result = SampleResult(**sample_result_kwargs)
+
+    # Core Data
+    assert result.id == sample_result_kwargs["id"]
+    assert result.sample_id == sample_result_kwargs["sample_id"]
+    assert result.target_name == sample_result_kwargs["target_name"]
+    assert result.algo_is_positive == sample_result_kwargs["algo_is_positive"]
+    assert result.algo_tm_peaks == sample_result_kwargs["algo_tm_peaks"]
+    assert result.cluster_label == sample_result_kwargs["cluster_label"]
+
+    # Defaults & Nullable Fields
+    assert result.export_status == "pending"
+    assert result.tech_val_is_positive is None
+    assert result.tech_validated_by_id is None
+    assert result.tech_validated_at is None
+    assert result.override_reason is None
+    assert result.exported_at is None
+
+
+def test_sample_result_columns() -> None:
+    mapper: Mapper[SampleResult] = inspect(SampleResult)
+    columns = mapper.columns
+
+    # PK & Non-Nullable Fields
+    assert columns.id.primary_key is True
+    assert columns.sample_id.nullable is False
+    assert columns.target_name.nullable is False
+    assert columns.algo_is_positive.nullable is False
+    assert columns.cluster_label.nullable is False
+    assert columns.export_status.nullable is False
+
+    # Array Validation
+    assert columns.algo_tm_peaks.nullable is False
+    assert isinstance(columns.algo_tm_peaks.type, ARRAY)
+    assert isinstance(columns.algo_tm_peaks.type.item_type, Float)
+
+    # Technical Validation (Escalation) - Must be Nullable
+    assert columns.tech_val_is_positive.nullable is True
+    assert columns.tech_validated_by_id.nullable is True
+    assert columns.tech_validated_at.nullable is True
+    assert columns.override_reason.nullable is True
+    assert columns.exported_at.nullable is True
+
+
+def test_sample_result_relationships() -> None:
+    mapper: Mapper[SampleResult] = inspect(SampleResult)
+    relationships = mapper.relationships
+
+    assert "tech_validated_by" in relationships
+    assert relationships.tech_validated_by.uselist is False
