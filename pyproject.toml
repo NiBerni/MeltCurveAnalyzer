@@ -1,6 +1,7 @@
 [project]
 name = "meltcurveanalyzer"
 version = "0.1.0"
+description = "AI-Driven PCR Melt Curve Analyzer"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.18.5",
