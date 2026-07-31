@@ -2,9 +2,10 @@
 Database models for the Identity & Access Management (IAM) layer.
 """
 
+import datetime
 import uuid
 
-from sqlalchemy import Boolean, Column, Float, ForeignKey, String, Table, Uuid
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, String, Table, Uuid
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -187,9 +188,55 @@ class MeltCurve(Base):
     sample: Mapped["Sample"] = relationship("Sample", back_populates="melt_curves")
 
 
-class SampleResult(Base):  # TODO implement fully later on
+class SampleResult(Base):
+    """
+    SampleResult entity encapsulating the final analytical output of the MeltCurveAnalyzer and ClusterClassifier.
+    Stores both the algorithmic clustering results and the manual technical validation (RBAC escalation).
+    """
+
     __tablename__ = "sample_results"
+
+    # Core Identity
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
 
-    tech_validated_by_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
-    tech_validated_by: Mapped["User"] = relationship(back_populates="sample_results")
+    # Foreign Keys & Core Data
+    sample_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("samples.id"), nullable=False
+    )
+    target_name: Mapped[str] = mapped_column(String, nullable=False)
+
+    # Algorithmic Results
+    algo_is_positive: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    algo_tm_peaks: Mapped[list[float]] = mapped_column(ARRAY(Float), nullable=False)
+    cluster_label: Mapped[str] = mapped_column(String, nullable=False)
+
+    # Technical Validation (Escalation / Override capabilities)
+    tech_val_is_positive: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    tech_validated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    tech_validated_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    override_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Export & LIS Status
+    export_status: Mapped[str] = mapped_column(
+        String, nullable=False, default="pending"
+    )
+    exported_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+
+    # Relationships
+    tech_validated_by: Mapped["User"] = relationship(
+        "User", back_populates="sample_results", uselist=False
+    )
+
+    def __repr__(self) -> str:
+        """Standard f-string implementation for debugging/logging purposes."""
+        return (
+            f"<SampleResult(id={self.id}, target='{self.target_name}', "
+            f"algo_positive={self.algo_is_positive}, cluster='{self.cluster_label}', "
+            f"export_status='{self.export_status}')>"
+        )
