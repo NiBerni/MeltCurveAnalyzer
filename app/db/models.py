@@ -5,7 +5,17 @@ Database models for the Identity & Access Management (IAM) layer.
 import datetime
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, String, Table, Uuid
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    String,
+    Table,
+    Uuid,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -182,8 +192,12 @@ class MeltCurve(Base):
         ForeignKey("samples.id"), nullable=False
     )
     target_channel: Mapped[str] = mapped_column(String, nullable=False)
-    temperatures: Mapped[list[float]] = mapped_column(ARRAY(Float), nullable=False)
-    raw_fluorescence: Mapped[list[float]] = mapped_column(ARRAY(Float), nullable=False)
+    temperatures: Mapped[list[float]] = mapped_column(
+        ARRAY(Float).with_variant(JSON, "sqlite"), nullable=False
+    )
+    raw_fluorescence: Mapped[list[float]] = mapped_column(
+        ARRAY(Float).with_variant(JSON, "sqlite"), nullable=False
+    )
 
     sample: Mapped["Sample"] = relationship("Sample", back_populates="melt_curves")
 
@@ -207,7 +221,9 @@ class SampleResult(Base):
 
     # Algorithmic Results
     algo_is_positive: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    algo_tm_peaks: Mapped[list[float]] = mapped_column(ARRAY(Float), nullable=False)
+    algo_tm_peaks: Mapped[list[float]] = mapped_column(
+        ARRAY(Float).with_variant(JSON, "sqlite"), nullable=False
+    )
     cluster_label: Mapped[str] = mapped_column(String, nullable=False)
 
     # Technical Validation (Escalation / Override capabilities)

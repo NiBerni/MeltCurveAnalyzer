@@ -1,10 +1,37 @@
 import datetime
 import uuid
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.db.models import SampleResult, User
 from app.db.repositories import SampleResultRepository
+
+
+@pytest.fixture
+def sample_instance(db_session: Session) -> uuid.UUID:
+    """Creates a dummy Sample record in the DB and returns its UUID for testing."""
+    from app.db.models import PcrRun, Sample
+
+    # Need a PcrRun first due to Foreign Key constraints
+    run = PcrRun(
+        id=uuid.uuid7(),
+        run_identifier="RUN-SAMPLE-TEST",
+        imported_by_id=uuid.uuid7(),
+    )
+    db_session.add(run)
+    db_session.commit()
+
+    sample_id = uuid.uuid7()
+    sample = Sample(
+        id=sample_id,
+        pcr_run_id=run.id,
+        well_position="A01",
+    )
+    db_session.add(sample)
+    db_session.commit()
+
+    return sample_id
 
 
 def test_repository_create_sample_result(
