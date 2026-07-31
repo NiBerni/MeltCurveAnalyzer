@@ -1,15 +1,26 @@
 import uuid
-from typing import TypedDict
+from typing import Any, TypedDict, cast
 
 import pytest
+from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.inspection import inspect
-from sqlalchemy.orm import Mapper
+from sqlalchemy.orm import Mapper, class_mapper
 from sqlalchemy.types import Float
 
-from app.db.models import MeltCurve, PcrRun, Sample
+from app.db.models import MeltCurve, PcrRun, Sample, SampleResult
 
 
+# ==============================================================================
+# Helper for Static Type Checkers (Ruff, PyCharm, Mypy)
+# ==============================================================================
+def get_col(mapper: Mapper[Any], col_name: str) -> Column[Any]:
+    """Extracts a strictly typed Column to bypass dynamic attribute warnings (_COL_co)."""
+    return cast(Column[Any], mapper.local_table.columns[col_name])
+
+
+# ==============================================================================
+# TypedDicts & Fixtures
+# ==============================================================================
 class PcrRunKwargs(TypedDict, total=False):
     id: uuid.UUID
     run_identifier: str
@@ -30,6 +41,15 @@ class MeltCurveKwargs(TypedDict, total=False):
     target_channel: str
     temperatures: list[float]
     raw_fluorescence: list[float]
+
+
+class SampleResultKwargs(TypedDict, total=False):
+    id: uuid.UUID
+    sample_id: uuid.UUID
+    target_name: str
+    algo_is_positive: bool
+    algo_tm_peaks: list[float]
+    cluster_label: str
 
 
 @pytest.fixture
@@ -63,11 +83,21 @@ def melt_curve_kwargs() -> MeltCurveKwargs:
     }
 
 
+@pytest.fixture
+def sample_result_kwargs() -> SampleResultKwargs:
+    return {
+        "id": uuid.uuid7(),
+        "sample_id": uuid.uuid7(),
+        "target_name": "SARS-CoV-2",
+        "algo_is_positive": True,
+        "algo_tm_peaks": [82.5, 84.0],
+        "cluster_label": "Wildtype",
+    }
+
+
 # ==============================================================================
 # Tests for PcrRun Model
 # ==============================================================================
-
-
 def test_pcr_run_instantiation(pcr_run_kwargs: PcrRunKwargs) -> None:
     run = PcrRun(**pcr_run_kwargs)
 
@@ -101,35 +131,32 @@ def test_pcr_run_instantiation_nullable_fields(
 
 
 def test_pcr_run_columns() -> None:
-    mapper: Mapper[PcrRun] = inspect(PcrRun)
-    columns = mapper.columns
+    mapper = class_mapper(PcrRun)
 
-    assert columns.id.primary_key is True
-    assert columns.run_identifier.nullable is False
-    assert columns.run_identifier.unique is True
-    assert columns.device_id.nullable is True
-    assert columns.raw_operator.nullable is True
-    assert columns.imported_by_id.nullable is False
+    assert get_col(mapper, "id").primary_key is True
+    assert get_col(mapper, "run_identifier").nullable is False
+    assert get_col(mapper, "run_identifier").unique is True
+    assert get_col(mapper, "device_id").nullable is True
+    assert get_col(mapper, "raw_operator").nullable is True
+    assert get_col(mapper, "imported_by_id").nullable is False
 
 
 def test_pcr_run_relationships() -> None:
-    mapper: Mapper[PcrRun] = inspect(PcrRun)
+    mapper = class_mapper(PcrRun)
     relationships = mapper.relationships
 
     assert "imported_by" in relationships
-    assert relationships.imported_by.uselist is False
+    assert relationships["imported_by"].uselist is False
 
     assert "samples" in relationships
-    assert relationships.samples.uselist is True
-    assert relationships.samples.cascade.delete is True
-    assert relationships.samples.cascade.delete_orphan is True
+    assert relationships["samples"].uselist is True
+    assert relationships["samples"].cascade.delete is True
+    assert relationships["samples"].cascade.delete_orphan is True
 
 
 # ==============================================================================
 # Tests for Sample Model
 # ==============================================================================
-
-
 def test_sample_instantiation(sample_kwargs: SampleKwargs) -> None:
     sample = Sample(**sample_kwargs)
 
@@ -139,32 +166,29 @@ def test_sample_instantiation(sample_kwargs: SampleKwargs) -> None:
 
 
 def test_sample_columns() -> None:
-    mapper: Mapper[Sample] = inspect(Sample)
-    columns = mapper.columns
+    mapper = class_mapper(Sample)
 
-    assert columns.id.primary_key is True
-    assert columns.pcr_run_id.nullable is False
-    assert columns.well_position.nullable is False
+    assert get_col(mapper, "id").primary_key is True
+    assert get_col(mapper, "pcr_run_id").nullable is False
+    assert get_col(mapper, "well_position").nullable is False
 
 
 def test_sample_relationships() -> None:
-    mapper: Mapper[Sample] = inspect(Sample)
+    mapper = class_mapper(Sample)
     relationships = mapper.relationships
 
     assert "pcr_run" in relationships
-    assert relationships.pcr_run.uselist is False
+    assert relationships["pcr_run"].uselist is False
 
     assert "melt_curves" in relationships
-    assert relationships.melt_curves.uselist is True
-    assert relationships.melt_curves.cascade.delete is True
-    assert relationships.melt_curves.cascade.delete_orphan is True
+    assert relationships["melt_curves"].uselist is True
+    assert relationships["melt_curves"].cascade.delete is True
+    assert relationships["melt_curves"].cascade.delete_orphan is True
 
 
 # ==============================================================================
 # Tests for MeltCurve Model
 # ==============================================================================
-
-
 def test_melt_curve_instantiation(melt_curve_kwargs: MeltCurveKwargs) -> None:
     melt_curve = MeltCurve(**melt_curve_kwargs)
 
@@ -176,25 +200,87 @@ def test_melt_curve_instantiation(melt_curve_kwargs: MeltCurveKwargs) -> None:
 
 
 def test_melt_curve_columns() -> None:
-    mapper: Mapper[MeltCurve] = inspect(MeltCurve)
-    columns = mapper.columns
+    mapper = class_mapper(MeltCurve)
 
-    assert columns.id.primary_key is True
-    assert columns.sample_id.nullable is False
-    assert columns.target_channel.nullable is False
+    assert get_col(mapper, "id").primary_key is True
+    assert get_col(mapper, "sample_id").nullable is False
+    assert get_col(mapper, "target_channel").nullable is False
 
-    assert columns.temperatures.nullable is False
-    assert isinstance(columns.temperatures.type, ARRAY)
-    assert isinstance(columns.temperatures.type.item_type, Float)
+    temp_col = get_col(mapper, "temperatures")
+    assert temp_col.nullable is False
+    assert isinstance(temp_col.type, ARRAY)
+    assert isinstance(temp_col.type.item_type, Float)
 
-    assert columns.raw_fluorescence.nullable is False
-    assert isinstance(columns.raw_fluorescence.type, ARRAY)
-    assert isinstance(columns.raw_fluorescence.type.item_type, Float)
+    rfu_col = get_col(mapper, "raw_fluorescence")
+    assert rfu_col.nullable is False
+    assert isinstance(rfu_col.type, ARRAY)
+    assert isinstance(rfu_col.type.item_type, Float)
 
 
 def test_melt_curve_relationships() -> None:
-    mapper: Mapper[MeltCurve] = inspect(MeltCurve)
+    mapper = class_mapper(MeltCurve)
     relationships = mapper.relationships
 
     assert "sample" in relationships
-    assert relationships.sample.uselist is False
+    assert relationships["sample"].uselist is False
+
+
+# ==============================================================================
+# Tests for SampleResult Model
+# ==============================================================================
+def test_sample_result_instantiation_and_defaults(
+    sample_result_kwargs: SampleResultKwargs,
+) -> None:
+    result = SampleResult(**sample_result_kwargs)
+
+    # Core Data
+    assert result.id == sample_result_kwargs["id"]
+    assert result.sample_id == sample_result_kwargs["sample_id"]
+    assert result.target_name == sample_result_kwargs["target_name"]
+    assert result.algo_is_positive == sample_result_kwargs["algo_is_positive"]
+    assert result.algo_tm_peaks == sample_result_kwargs["algo_tm_peaks"]
+    assert result.cluster_label == sample_result_kwargs["cluster_label"]
+
+    # Nullable Fields (in-memory state before flush)
+    assert result.tech_val_is_positive is None
+    assert result.tech_validated_by_id is None
+    assert result.tech_validated_at is None
+    assert result.override_reason is None
+    assert result.exported_at is None
+
+
+def test_sample_result_columns() -> None:
+    mapper = class_mapper(SampleResult)
+
+    # PK & Non-Nullable Fields
+    assert get_col(mapper, "id").primary_key is True
+    assert get_col(mapper, "sample_id").nullable is False
+    assert get_col(mapper, "target_name").nullable is False
+    assert get_col(mapper, "algo_is_positive").nullable is False
+    assert get_col(mapper, "cluster_label").nullable is False
+    assert get_col(mapper, "export_status").nullable is False
+
+    export_col = get_col(mapper, "export_status")
+    assert export_col.default is not None
+    assert export_col.default.arg == "pending"
+
+    # Array Validation
+    algo_tm_peaks_col = get_col(mapper, "algo_tm_peaks")
+    assert algo_tm_peaks_col.nullable is False
+    assert isinstance(algo_tm_peaks_col.type, ARRAY)
+    assert isinstance(algo_tm_peaks_col.type.item_type, Float)
+
+    # Technical Validation (Escalation) - Must be Nullable
+    assert get_col(mapper, "tech_val_is_positive").nullable is True
+    assert get_col(mapper, "tech_validated_by_id").nullable is True
+    assert get_col(mapper, "tech_validated_at").nullable is True
+    assert get_col(mapper, "override_reason").nullable is True
+    assert get_col(mapper, "exported_at").nullable is True
+
+
+def test_sample_result_relationships() -> None:
+    mapper = class_mapper(SampleResult)
+    relationships = mapper.relationships
+
+    assert "tech_validated_by" in relationships
+    assert relationships["tech_validated_by"].uselist is False
