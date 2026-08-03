@@ -256,3 +256,30 @@ class SampleResult(Base):
             f"algo_positive={self.algo_is_positive}, cluster='{self.cluster_label}', "
             f"export_status='{self.export_status}')>"
         )
+
+
+class AssayTemplate(Base):
+    """
+    AssayTemplate entity defining assay configuration parameters like
+    target definitions, expected Tm values, and multiplex mappings.
+    """
+
+    __tablename__ = "assay_templates"
+
+    # Core Identity
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
+
+    # Required Attributes
+    template_identifier: Mapped[str] = mapped_column(
+        String, unique=True, nullable=False
+    )
+    multiplex_mapping: Mapped[dict[str, list[str]]] = mapped_column(
+        JSON, nullable=False
+    )
+
+    # Optional Attributes
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    def __repr__(self) -> str:
+        """Standard f-string implementation for debugging/logging purposes."""
+        return f'<AssayTemplate(id={self.id}, template_identifier="{self.template_identifier}")>'

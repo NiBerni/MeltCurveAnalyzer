@@ -12,7 +12,7 @@ from sqlalchemy import select, tstring
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.db.models import PcrRun, SampleResult
+from app.db.models import AssayTemplate, PcrRun, SampleResult
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -180,5 +180,62 @@ class SampleResultRepository:
         logger.info(
             f"Successfully updated technical validation for SampleResult ID: {result.id}"
         )
+
+        return result
+
+
+class TemplateRepository:
+    """
+    Repository handling persistence and retrieval logic for AssayTemplate entities.
+    Manages CRUD operations for assay configuration parameters required by the processing pipeline.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    @log_repository_action("create_template")
+    def create(
+        self,
+        template_identifier: str,
+        multiplex_mapping: dict[str, list[str]],
+        description: str | None = None,
+    ) -> AssayTemplate:
+        """
+        Creates, persists, and refreshes a new AssayTemplate record.
+        """
+        new_template = AssayTemplate(
+            template_identifier=template_identifier,
+            multiplex_mapping=multiplex_mapping,
+            description=description,
+        )
+
+        self.session.add(new_template)
+        self.session.commit()
+        self.session.refresh(new_template)
+
+        logger.info(f"Successfully created AssayTemplate with ID: {new_template.id}")
+
+        return new_template
+
+    @log_repository_action("get_template_by_identifier")
+    def get_by_identifier(self, template_identifier: str) -> AssayTemplate | None:
+        """
+        Retrieves an AssayTemplate safely by its string identifier.
+        Exclusively uses PEP 750 template strings for strict SQL injection prevention.
+        """
+        stmt = select(AssayTemplate).from_statement(
+            tstring(
+                t"SELECT * FROM assay_templates WHERE template_identifier = {template_identifier}"
+            )
+        )
+
+        result = self.session.execute(stmt).scalars().first()
+
+        if result is None:
+            logger.warning(
+                f"AssayTemplate with identifier '{template_identifier}' not found."
+            )
+        else:
+            logger.info(f"Successfully fetched AssayTemplate '{template_identifier}'.")
 
         return result
