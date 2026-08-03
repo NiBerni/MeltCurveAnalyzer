@@ -2,12 +2,12 @@ import uuid
 from typing import Any, TypedDict, cast
 
 import pytest
-from sqlalchemy import Column
+from sqlalchemy import JSON, Column
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapper, class_mapper
-from sqlalchemy.types import Float
+from sqlalchemy.types import Float, String
 
-from app.db.models import MeltCurve, PcrRun, Sample, SampleResult
+from app.db.models import AssayTemplate, MeltCurve, PcrRun, Sample, SampleResult
 
 
 # ==============================================================================
@@ -52,6 +52,13 @@ class SampleResultKwargs(TypedDict, total=False):
     cluster_label: str
 
 
+class AssayTemplateKwargs(TypedDict, total=False):
+    id: uuid.UUID
+    template_identifier: str
+    multiplex_mapping: dict[str, list[str]]
+    description: str | None
+
+
 @pytest.fixture
 def pcr_run_kwargs() -> PcrRunKwargs:
     return {
@@ -92,6 +99,16 @@ def sample_result_kwargs() -> SampleResultKwargs:
         "algo_is_positive": True,
         "algo_tm_peaks": [82.5, 84.0],
         "cluster_label": "Wildtype",
+    }
+
+
+@pytest.fixture
+def assay_template_kwargs() -> AssayTemplateKwargs:
+    return {
+        "id": uuid.uuid7(),
+        "template_identifier": "RESP-MULTIPLEX-V1",
+        "multiplex_mapping": {"FAM": ["SARS-CoV-2", "Flu A"], "HEX": ["RSV"]},
+        "description": "Standard respiratory multiplex assay setup for Winter 2026.",
     }
 
 
@@ -284,3 +301,34 @@ def test_sample_result_relationships() -> None:
 
     assert "tech_validated_by" in relationships
     assert relationships["tech_validated_by"].uselist is False
+
+
+# ==============================================================================
+# Tests for AssayTemplate Model
+# ==============================================================================
+def test_assay_template_instantiation(
+    assay_template_kwargs: AssayTemplateKwargs,
+) -> None:
+    template = AssayTemplate(**assay_template_kwargs)
+
+    assert template.id == assay_template_kwargs["id"]
+    assert template.template_identifier == assay_template_kwargs["template_identifier"]
+    assert template.multiplex_mapping == assay_template_kwargs["multiplex_mapping"]
+    assert template.description == assay_template_kwargs["description"]
+
+
+def test_assay_template_columns() -> None:
+    mapper = class_mapper(AssayTemplate)
+
+    assert get_col(mapper, "id").primary_key is True
+
+    template_identifier_col = get_col(mapper, "template_identifier")
+    assert template_identifier_col.nullable is False
+    assert template_identifier_col.unique is True
+
+    multiplex_mapping_col = get_col(mapper, "multiplex_mapping")
+    assert multiplex_mapping_col.nullable is False
+    assert isinstance(multiplex_mapping_col.type, JSON)
+
+    description_col = get_col(mapper, "description")
+    assert description_col.nullable is True
