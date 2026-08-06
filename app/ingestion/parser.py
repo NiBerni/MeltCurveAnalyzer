@@ -8,9 +8,10 @@ by the cycler, ensuring a downstream math process receives sanitized, strict dat
 
 import io
 import time
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from functools import wraps
-from typing import ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 import pandas as pd
 from loguru import logger
@@ -59,7 +60,7 @@ class CyclerDataParser:
     yielding a robust pandas DataFrame that the AnalysisService can pass down to the MeltCurveAnalyzer.
     """
 
-    def __init__(self, stream: io.TextIOBase) -> None:
+    def __init__(self, stream: io.TextIOBase | None = None) -> None:
         """
         Initialize the parser and process the file stream immediatly.
 
@@ -69,7 +70,8 @@ class CyclerDataParser:
         self.metadata: dict[str, str] = {}
         self.data: pd.DataFrame = pd.DataFrame()
 
-        self._parse(stream)
+        if stream is not None:
+            self._parse(stream)
 
     @profile_parsing
     def _parse(self, stream: io.TextIOBase) -> None:
@@ -134,3 +136,82 @@ class CyclerDataParser:
                     f'Corrupted numeric value identified in column "{col}": {exc}'
                 ) from exc
         self.data = df
+
+    @profile_parsing
+    def parse_roche_xml_mvp(self, xml_content: str | bytes) -> list[dict[str, Any]]:
+        """
+        Parses a Roche LightCycler XML export and strictly extracts melt curve data.
+
+        :param xml_content: The raw XML stream containing cycler acquisitions.
+        :raises ValueError: If the XML is malformed or lacks mandatory structural nodes.
+        :return: A sanitized list of dictionaries containing formatted melt curve data ready for the AnalysisService.
+        """
+        try:
+            root = ET.fromstring(xml_content)
+        except ET.ParseError as exc:
+            raise ValueError(f"Malformed XML payload provided: {exc}") from exc
+
+        # Extract Run Identifier or fallback to default
+        run_name_node = root.find(".//prop[@name='name']")
+        run_identifier = (
+            run_name_node.text.strip()
+            if run_name_node is not None and run_name_node.text
+            else "UNKNOWN_RUN"
+        )
+
+        # Validate mandatory Acquisitions block
+        acquisitions_node = root.find(".//Acquisitions")
+        if acquisitions_node is None:
+            raise ValueError(
+                "Invalid cycler export format: Missing mandatory <Acquisitions> block."
+            )
+
+        results: list[dict[str, Any]] = []
+
+        # Process each sample independently
+        for sample_node in acquisitions_node.findall("Sample"):
+            sample_number = sample_node.get("Number", "Unknown")
+            well_position = f"Sample_{sample_number}"
+
+            temperatures: list[float] = []
+            raw_fluorescence: list[float] = []
+
+            # Filter and parse valid Acquisitions (Acq >= 46)
+            for acq_node in sample_node.findall("Acq"):
+                try:
+                    acq_num = int(acq_node.get("Number", "-1"))
+                except ValueError, TypeError:
+                    continue
+
+                if acq_num >= 46:
+                    chan_node = acq_node.find("Chan[@Number='0']")
+                    if chan_node is not None:
+                        temp_node = chan_node.find("prop[@name='Temp']")
+                        fluor_node = chan_node.find("prop[@name='Fluor']")
+
+                        if (
+                            temp_node is not None
+                            and fluor_node is not None
+                            and temp_node.text
+                            and fluor_node.text
+                        ):
+                            try:
+                                temperatures.append(float(temp_node.text))
+                                raw_fluorescence.append(float(fluor_node.text))
+                            except ValueError, TypeError:
+                                # Defensively ignore corrupted numeric floats within a specific acquisition
+                                continue
+
+            # Construct the sanitized payload only if melt data exists for the sample
+            if temperatures and raw_fluorescence:
+                results.append(
+                    {
+                        "run_identifier": run_identifier,
+                        "well_position": well_position,
+                        "target_channel": "FAM",
+                        "temperatures": temperatures,
+                        "raw_fluorescence": raw_fluorescence,
+                    }
+                )
+
+        return results
