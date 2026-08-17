@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=2.5.1",
     "pandas>=3.0.3",
     "pandas-stubs~=3.0.3",
+    "psycopg==3.3.4",
     "psycopg-binary>=3.3.4",
     "pylint>=4.0.6",
     "pytest>=9.1.1",
