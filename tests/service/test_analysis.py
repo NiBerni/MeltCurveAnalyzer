@@ -116,7 +116,13 @@ def test_process_run_success(
     }
     mock_template_repo.get_by_identifier.return_value = mock_template
 
-    mock_analyzer.analyze_curve.return_value = [70.1]
+    # MOCK AKTUALISIERT: 'analyze' statt 'analyze_curve' verwenden
+    mock_analyzer.analyze.return_value = {
+        "tm_peaks": [70.1],
+        "processed_curve": [0.1, 0.2],
+        "requires_senior_validation": False,
+    }
+
     mock_classifier.classify_channel_targets.return_value = {"Target A": True}
 
     mock_run_db_obj = MagicMock()
@@ -139,8 +145,7 @@ def test_process_run_success(
     mock_parser.parse_roche_xml_mvp.assert_called_once_with(file_content)
     mock_template_repo.get_by_identifier.assert_called_once_with(template_identifier)
 
-    # Verify analyzer is called at least once (parameters depend on internal mapping logic)
-    mock_analyzer.analyze_curve.assert_called()
+    mock_analyzer.analyze.assert_called()
 
     # Verify classifier is called at least once
     mock_classifier.classify_channel_targets.assert_called()
