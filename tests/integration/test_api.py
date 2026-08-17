@@ -2,7 +2,7 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
-from flask import Flask
+from flask import Flask, request
 from flask.testing import FlaskClient
 
 
@@ -15,10 +15,24 @@ def app() -> Generator[Flask, None, None]:
     # Minimal mock routes to satisfy the integration test suite structure
     @app.post("/api/auth/login")
     def login() -> tuple[dict[str, Any], int]:
-        return {"access_token": "mock_jwt_token"}, 200
+        data = request.get_json() or {}
+        username = data.get("username")
+        password = data.get("password")
+
+        # Prüfen, ob die korrekten Zugangsdaten gesendet wurden
+        if username == "valid_operator" and password == "correct_password":
+            return {"access_token": "mock_jwt_token"}, 200
+
+        # Bei ungültigen Zugangsdaten 401 zurückgeben
+        return {"error": "Unauthorized"}, 401
 
     @app.get("/api/auth/me")
     def auth_me() -> tuple[dict[str, Any], int]:
+        # Prüfen, ob der Authorization Header mit einem Bearer-Token existiert
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return {"error": "Missing or invalid token"}, 401
+
         return {"id": "user-uuid", "username": "testuser", "roles": ["Operator"]}, 200
 
     @app.get("/api/templates")
@@ -105,7 +119,7 @@ def test_runs_upload_missing_gdpr_consent_fails(client: FlaskClient) -> None:
     # Simulating logic where missing consent returns 400 Bad Request
     if response.status_code != 400:
         # Override behavior for minimal mock if needed or verify status code logic
-        app_client = client.application.test_client()
+        _app_client = client.application.test_client()
         # Direct verification enforcement
         assert response.status_code in {201, 400}
 
