@@ -18,9 +18,18 @@ from sqlalchemy import tstring
 from werkzeug.exceptions import BadRequest, Forbidden, Unauthorized
 
 from app.api.schemas import ValidationPayload
+from app.core.analyzer import MeltCurveAnalyzer
+from app.core.classifier import ClusterClassifier
+from app.db.repositories import (
+    PcrRunRepository,
+    SampleResultRepository,
+    TemplateRepository,
+)
 
 # Assume database session and services are managed/injected via a registry or Flask g
 from app.db.session import get_session
+from app.ingestion.parser import CyclerDataParser
+from app.services.analysis_service import AnalysisService
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -150,7 +159,6 @@ def upload_run() -> tuple[Any, int]:
     """Ingests cycler files. Strictly enforces GDPR compliance gate."""
     consent = request.form.get("consent_gdpr_phi", "false").lower()
 
-    # GDPR Informed Consent Gate
     if consent != "true":
         raise BadRequest("Explicit GDPR and PHI anonymization consent is required.")
 
@@ -161,11 +169,33 @@ def upload_run() -> tuple[Any, int]:
     if "file" not in request.files:
         raise BadRequest("No cycler data file provided.")
 
-    _file = request.files["file"]
+    uploaded_file = request.files["file"]
 
-    # Service delegation (using test-friendly mocks or actual service pipeline)
-    # AnalysisService.process_run(file.read(), file.filename, template_id, user_uuid)
-    return jsonify({"run_id": "run-uuid", "status": "processed"}), 201
+    safe_filename = uploaded_file.filename
+    if not safe_filename:
+        raise BadRequest("Uploaded file is missing a filename.")
+
+    user_uuid = uuid.UUID(get_jwt_identity())
+
+    session = get_session()
+
+    service = AnalysisService(
+        parser=CyclerDataParser(),
+        analyzer=MeltCurveAnalyzer(),
+        classifier=ClusterClassifier(),
+        run_repo=PcrRunRepository(session),
+        result_repo=SampleResultRepository(session),
+        template_repo=TemplateRepository(session),
+    )
+
+    result_summary = service.process_run(
+        file_content=uploaded_file.read(),
+        filename=safe_filename,
+        template_identifier=template_id,
+        user_id=user_uuid,
+    )
+
+    return jsonify(result_summary), 201
 
 
 @api_bp.get("/runs/<uuid:run_id>")
@@ -182,15 +212,15 @@ def get_run_details(run_id: uuid.UUID) -> tuple[Any, int]:
 @require_roles("Senior", "Validator", "Admin")
 def validate_result(result_id: uuid.UUID) -> tuple[Any, int]:
     """RBAC-protected endpoint for manual technical validation of an AI-flagged result."""
-    _payload = ValidationPayload.from_dict(request.get_json())
+    payload = ValidationPayload.from_dict(request.get_json())
 
-    # session = get_session()
-    # repo = SampleResultRepository(session)
-    # repo.update_tech_validation(
-    #     result_id=result_id,
-    #     is_positive=payload.is_positive,
-    #     validated_by_id=uuid.UUID(get_jwt_identity()),
-    #     override_reason=payload.override_reason
-    # )
+    session = get_session()
+    repo = SampleResultRepository(session)
+    repo.update_tech_validation(
+        result_id=result_id,
+        is_positive=payload.is_positive,
+        validated_by_id=uuid.UUID(get_jwt_identity()),
+        override_reason=payload.override_reason,
+    )
 
     return jsonify({"result_id": str(result_id), "status": "validated"}), 200

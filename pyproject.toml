@@ -20,4 +20,5 @@ dependencies = [
     "scipy==1.18.0",
     "scipy-stubs~=1.18.0",
     "sqlalchemy==2.1.0b3",
+    "werkzeug>=3.1.8",
 ]

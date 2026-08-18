@@ -233,6 +233,7 @@ dependencies = [
     { name = "scipy" },
     { name = "scipy-stubs" },
     { name = "sqlalchemy" },
+    { name = "werkzeug" },
 ]
 
 [package.metadata]
@@ -253,6 +254,7 @@ requires-dist = [
     { name = "scipy", specifier = "==1.18.0" },
     { name = "scipy-stubs", specifier = "~=1.18.0" },
     { name = "sqlalchemy", specifier = "==2.1.0b3" },
+    { name = "werkzeug", specifier = ">=3.1.8" },
 ]
 
 [[package]]
