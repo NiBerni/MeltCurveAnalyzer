@@ -146,14 +146,16 @@ class MeltCurveAnalyzer:
         Optimized with scipy.sparse matrix operations for millisecond performance.
         """
         L = len(y)
-        D = diags([1, -2, 1], [0, 1, 2], shape=(L - 2, L))
+        D = diags([1, -2, 1], [0, 1, 2], shape=(L - 2, L), dtype=float)
+
+        D_csr = D.tocsr()
 
         w = np.ones(L)
         z = np.copy(y)
 
         for _ in range(self.als_niter):
             W = diags(w, 0, shape=(L, L))
-            Z = W + self.als_lam * D.transpose().dot(D)
+            Z = W + self.als_lam * D_csr.transpose().dot(D)
             z = spsolve(Z, w * y)
             w = self.als_p * (y > z) + (1 - self.als_p) * (y < z)
         return z

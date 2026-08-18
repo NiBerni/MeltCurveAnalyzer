@@ -224,6 +224,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pandas-stubs" },
+    { name = "psycopg" },
     { name = "psycopg-binary" },
     { name = "pylint" },
     { name = "pytest" },
@@ -232,6 +233,7 @@ dependencies = [
     { name = "scipy" },
     { name = "scipy-stubs" },
     { name = "sqlalchemy" },
+    { name = "werkzeug" },
 ]
 
 [package.metadata]
@@ -243,6 +245,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.5.1" },
     { name = "pandas", specifier = ">=3.0.3" },
     { name = "pandas-stubs", specifier = "~=3.0.3" },
+    { name = "psycopg", specifier = "==3.3.4" },
     { name = "psycopg-binary", specifier = ">=3.3.4" },
     { name = "pylint", specifier = ">=4.0.6" },
     { name = "pytest", specifier = ">=9.1.1" },
@@ -251,6 +254,7 @@ requires-dist = [
     { name = "scipy", specifier = "==1.18.0" },
     { name = "scipy-stubs", specifier = "~=1.18.0" },
     { name = "sqlalchemy", specifier = "==2.1.0b3" },
+    { name = "werkzeug", specifier = ">=3.1.8" },
 ]
 
 [[package]]
@@ -384,6 +388,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "psycopg"
+version = "3.3.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/db/2f/cb91e5502ec9de1de6f1b76cfbf69531932725361168bb06963620c77e2e/psycopg-3.3.4.tar.gz", hash = "sha256:e21207764952cff81b6b8bdacad9a3939f2793367fdac2987b3aac36a651b5bc", size = 165799, upload-time = "2026-05-01T23:31:55.179Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5c/e0/7b3dee031daae7743609ce3c746565d4a3ed7c2c186479eb48e34e838c64/psycopg-3.3.4-py3-none-any.whl", hash = "sha256:b6bbc25ccf05c8fad3b061d9db2ef0909a555171b84b07f29458a447253d679a", size = 213001, upload-time = "2026-05-01T23:20:50.816Z" },
 ]
 
 [[package]]
