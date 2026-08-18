@@ -1,5 +1,4 @@
 """
-main.py
 Application factory for the Flask server.
 """
 
@@ -7,17 +6,15 @@ from flask import Flask, Response
 from flask_jwt_extended import JWTManager
 
 from app.api.routes import api_bp
+from app.config import JWT_SECRET_KEY
 
 
 def create_app() -> Flask:
     """Application factory for the PCR Analyzer LIMS."""
     app = Flask("pcr_analyzer_mvp")
 
-    # Core Configuration
-    app.config["JWT_SECRET_KEY"] = "super-secure-production-jwt-key"
-    app.config["SQLALCHEMY_DATABASE_URI"] = (
-        "postgresql+psycopg://user:pass@localhost:5432/pcr_lims"
-    )
+    # Core Configuration - Holt den Key dynamisch aus den Umgebungsvariablen
+    app.config["JWT_SECRET_KEY"] = JWT_SECRET_KEY
 
     # Initialize Extensions
     JWTManager(app)
