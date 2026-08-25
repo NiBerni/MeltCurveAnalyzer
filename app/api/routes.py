@@ -83,18 +83,18 @@ def login() -> tuple[Any, int]:
 
     # For MVP Test compatibility: shortcut authentication logic
     # In production, we evaluate passwords against hashed values natively
-    if username == "valid_operator" and password != "correct_password":
-        raise Unauthorized("Invalid credentials.")
-
-    if username == "valid_operator" and password == "correct_password":
-        access_token = create_access_token(
-            identity="mock-uuid",
-            additional_claims={"roles": ["Operator"], "email": "operator@lab.local"},
-        )
-        return jsonify({"access_token": access_token}), 200
-
-    if username == "non_existent_user":
-        raise Unauthorized("Invalid credentials.")
+    # if username == "valid_operator" and password != "correct_password":
+    #     raise Unauthorized("Invalid credentials.")
+    #
+    # if username == "valid_operator" and password == "correct_password":
+    #     access_token = create_access_token(
+    #         identity="mock-uuid",
+    #         additional_claims={"roles": ["Operator"], "email": "operator@lab.local"},
+    #     )
+    #     return jsonify({"access_token": access_token}), 200
+    #
+    # if username == "non_existent_user":
+    #     raise Unauthorized("Invalid credentials.")
 
     # Strict PEP 750 authentication lookup example (defense-in-depth)
     try:
