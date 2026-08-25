@@ -4,26 +4,46 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.config import DATABASE_URL
-from app.db.models import AssayTemplate, PcrRun, Role, Sample, SampleResult, User
+from app.db.models import (
+    AssayTemplate,
+    Base,
+    PcrRun,
+    Permission,
+    Role,
+    Sample,
+    SampleResult,
+    User,
+)
 
 # Engine und Session analog zum restlichen Backend initialisieren
 engine = create_engine(DATABASE_URL)
+Base.metadata.drop_all(engine)
+Base.metadata.create_all(engine)
 SessionLocal = sessionmaker(bind=engine)
 
 
 def run_seed():
     with SessionLocal() as session:
         print("Starte Datenbank-Seed für die Präsentation...")
+        upload_perm = Permission(
+            name="upload_runs", description="Darf PCR-Läufe hochladen"
+        )
+        validate_perm = Permission(
+            name="validate_results", description="Darf unklare Ergebnisse validieren"
+        )
 
-        # 1. IAM / RBAC: Rollen anlegen
+        # 2. IAM / RBAC: Rollen anlegen und Permissions direkt übergeben
         operator_role = Role(
-            name="Operator", description="Standard Operator für Routine-Uploads"
+            name="Operator",
+            description="Standard Operator",
+            permissions=[upload_perm],  # Nur Upload-Rechte
         )
         senior_role = Role(
             name="Senior",
-            description="Darf unklare Ergebnisse und Eskalationen validieren",
+            description="Darf Eskalationen validieren",
+            permissions=[upload_perm, validate_perm],  # Upload + Validate-Rechte
         )
-        session.add_all([operator_role, senior_role])
+        session.add_all([upload_perm, validate_perm, operator_role, senior_role])
 
         # 2. IAM / RBAC: User anlegen (MVP plain-text passwort kompatibel)
         operator_user = User(
