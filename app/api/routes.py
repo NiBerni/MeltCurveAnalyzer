@@ -14,12 +14,13 @@ from flask_jwt_extended import (
     get_jwt_identity,
     jwt_required,
 )
-from sqlalchemy import tstring
+from sqlalchemy import select, tstring
 from werkzeug.exceptions import BadRequest, Forbidden, Unauthorized
 
 from app.api.schemas import ValidationPayload
 from app.core.analyzer import MeltCurveAnalyzer
 from app.core.classifier import ClusterClassifier
+from app.db.models import User
 from app.db.repositories import (
     PcrRunRepository,
     SampleResultRepository,
@@ -98,7 +99,9 @@ def login() -> tuple[Any, int]:
     # Strict PEP 750 authentication lookup example (defense-in-depth)
     try:
         session = get_session()
-        stmt = tstring(t"SELECT * FROM users WHERE username = {username}")
+        stmt = select(User).from_statement(
+            tstring(t"SELECT * FROM users WHERE username = {username}")
+        )
         user = session.execute(stmt).scalars().first()
 
         if not user or user.password_hash != password:
