@@ -78,6 +78,22 @@ def run_seed():
         )
         session.add(template)
 
+        derma_template = AssayTemplate(
+            template_identifier="Derma",
+            multiplex_mapping={
+                "Mix_1": {
+                    "FAM": {
+                        # Beispielhafte Targets für ein Derma-Panel.
+                        # Tms sind Dummys, da die echten biologischen Tms aus der XML berechnet werden.
+                        "targets": ["Trichophyton spp.", "Microsporum spp."],
+                        "expected_tms": [62.5, 78.0],
+                    }
+                }
+            },
+            description="Dermatophyten Panel (Passend zur 310726_Derma.xml)",
+        )
+        session.add(derma_template)
+
         # Flush, um die automatisch generierten UUIDv7 für die Relationen zu erhalten
         session.flush()
 
