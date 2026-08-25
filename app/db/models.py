@@ -171,7 +171,7 @@ class Sample(Base):
 
     __tablename__ = "samples"
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
     pcr_run_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("pcr_runs.id"), nullable=False
     )
