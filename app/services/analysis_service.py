@@ -11,6 +11,8 @@ from typing import Any, Callable, ParamSpec, TypeVar
 
 from loguru import logger
 
+from app.db.models import Sample
+
 P = ParamSpec("P")
 R = TypeVar("R")
 
@@ -94,7 +96,7 @@ class AnalysisService:
 
         # 3. PcrRun Record Creation
         run_record = self.run_repo.create(
-            run_identifier=run_identifier,
+            run_identifier=f"{run_identifier}_{uuid.uuid4().hex[:6]}",
             device_id="UNKNOWN",  # Placeholder based on MVP requirements
             raw_operator="UNKNOWN",
             imported_by_id=user_id,
@@ -105,6 +107,9 @@ class AnalysisService:
         # 4. Channel-Isolated Math & Classification Loop
         for well_data in parsed_data:
             well_pos = well_data.get("well_position", "").lower()
+            sample = Sample(pcr_run_id=run_record.id, well_position=well_pos)
+            self.run_repo.session.add(sample)
+            self.run_repo.session.flush()
             channel = well_data.get("target_channel")
             temperatures = well_data.get("temperatures", [])
             raw_fluorescence = well_data.get("raw_fluorescence", [])
@@ -158,7 +163,7 @@ class AnalysisService:
             # 6. Persistence
             for target_name, is_positive in classified_targets.items():
                 result_record = self.result_repo.create(
-                    sample_id=run_record.id,  # Assuming sample aligns with run for MVP tests
+                    sample_id=sample.id,  # Assuming sample aligns with run for MVP tests
                     target_name=target_name,
                     algo_is_positive=is_positive,
                     algo_tm_peaks=peaks,
