@@ -20,7 +20,7 @@ from werkzeug.exceptions import BadRequest, Forbidden, Unauthorized
 from app.api.schemas import ValidationPayload
 from app.core.analyzer import MeltCurveAnalyzer
 from app.core.classifier import ClusterClassifier
-from app.db.models import User
+from app.db.models import AssayTemplate, User
 from app.db.repositories import (
     PcrRunRepository,
     SampleResultRepository,
@@ -143,7 +143,9 @@ def get_templates() -> tuple[Any, int]:
     """Retrieves available PCR assay templates for selection."""
     session = get_session()
     # Simplified fetch for the MVP integration tests
-    stmt = tstring(t"SELECT * FROM assay_templates LIMIT 100")
+    stmt = select(AssayTemplate).from_statement(
+        tstring(t"SELECT * FROM assay_templates LIMIT 100")
+    )
     templates = session.execute(stmt).scalars().all()
 
     # Fallback structure if database is unseeded during testing
