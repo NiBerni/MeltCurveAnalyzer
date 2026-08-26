@@ -137,7 +137,7 @@ def test_analyzer_complete_pipeline_success(
     patient_rfu_valid: list[float],
     ntc_rfu: list[float],
 ) -> None:
-    """Validates successful ent-to-end execution strictly sequentially isolated.
+    """Validates successful end-to-end execution strictly sequentially isolated.
     (Blanking -> ALS -> SavGol -> Gauss-Fit).
     """
     result = analyzer.analyze(
@@ -267,7 +267,7 @@ def test_analyzer_deconvolutes_overlapping_peaks(
     patient_rfu_overlapping: list[float],
 ) -> None:
     """
-    TDD Red Phase: This test forces the implementation of Gaussian Deconvolution.
+    This test forces the implementation of Gaussian Deconvolution.
     A simple threshold approach will fail to separate the shoulder peak.
     """
     result = analyzer.analyze(

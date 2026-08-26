@@ -186,7 +186,9 @@ def upload_run() -> tuple[Any, int]:
 
     service = AnalysisService(
         parser=CyclerDataParser(),
-        analyzer=MeltCurveAnalyzer(),
+        analyzer=MeltCurveAnalyzer(
+            relative_height_threshold=0.05, prominence_factor=0.5, savgol_window=5
+        ),
         classifier=ClusterClassifier(),
         run_repo=PcrRunRepository(session),
         result_repo=SampleResultRepository(session),
