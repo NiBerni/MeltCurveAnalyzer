@@ -11,7 +11,7 @@ from typing import Any, Callable, ParamSpec, TypeVar
 
 from loguru import logger
 
-from app.db.models import Sample
+from app.db.models import MeltCurve, Sample
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -113,6 +113,14 @@ class AnalysisService:
             channel = well_data.get("target_channel")
             temperatures = well_data.get("temperatures", [])
             raw_fluorescence = well_data.get("raw_fluorescence", [])
+            curve = MeltCurve(
+                sample_id=sample.id,
+                target_channel=channel,
+                temperatures=temperatures,
+                raw_fluorescence=raw_fluorescence,
+            )
+            self.run_repo.session.add(curve)
+            self.run_repo.session.flush()
 
             # Run peak detection
             analysis_result = {}
