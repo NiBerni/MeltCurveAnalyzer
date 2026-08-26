@@ -86,7 +86,7 @@ def run_seed():
                         # Beispielhafte Targets für ein Derma-Panel.
                         # Tms sind Dummys, da die echten biologischen Tms aus der XML berechnet werden.
                         "targets": ["Trichophyton spp.", "Microsporum spp."],
-                        "expected_tms": [62.5, 78.0],
+                        "expected_tms": [70.5, 78.0],
                     }
                 }
             },
