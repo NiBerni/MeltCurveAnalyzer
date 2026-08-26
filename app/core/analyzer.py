@@ -33,9 +33,9 @@ class MeltCurveAnalyzer:
 
     def __init__(
         self,
-        relative_height_threshold: float = 0.05,
-        prominence_factor: float = 0.5,
-        savgol_window: int = 5,
+        relative_height_threshold: float = 0.15,
+        prominence_factor: float = 5.0,
+        savgol_window: int = 15,
         savgol_polyorder: int = 3,
         als_lam: float = 1e4,
         als_p: float = 0.05,
