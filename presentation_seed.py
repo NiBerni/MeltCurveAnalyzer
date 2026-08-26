@@ -82,11 +82,11 @@ def run_seed():
             template_identifier="Derma",
             multiplex_mapping={
                 "Mix_1": {
-                    "ROX": {
+                    "HEX": {
                         # Beispielhafte Targets für ein Derma-Panel.
                         # Tms sind Dummys, da die echten biologischen Tms aus der XML berechnet werden.
                         "targets": ["Trichophyton spp.", "Microsporum spp."],
-                        "expected_tms": [71.5, 78.0],
+                        "expected_tms": [57.5, 65.0],
                     }
                 }
             },
