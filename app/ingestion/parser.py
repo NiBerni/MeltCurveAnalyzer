@@ -140,18 +140,14 @@ class CyclerDataParser:
     @profile_parsing
     def parse_roche_xml_mvp(self, xml_content: str | bytes) -> list[dict[str, Any]]:
         """
-        Parses a Roche LightCycler XML export and strictly extracts melt curve data.
-
-        :param xml_content: The raw XML stream containing cycler acquisitions.
-        :raises ValueError: If the XML is malformed or lacks mandatory structural nodes.
-        :return: A sanitized list of dictionaries containing formatted melt curve data ready for the AnalysisService.
+        Parses a Roche LightCycler XML export and strictly extracts melt curve data
+        for all multiplexed channels, normalizing channel names via DDD mapping.
         """
         try:
             root = ET.fromstring(xml_content)
         except ET.ParseError as exc:
             raise ValueError(f"Malformed XML payload provided: {exc}") from exc
 
-        # Extract Run Identifier or fallback to default
         run_name_node = root.find(".//prop[@name='name']")
         run_identifier = (
             run_name_node.text.strip()
@@ -159,7 +155,26 @@ class CyclerDataParser:
             else "UNKNOWN_RUN"
         )
 
-        # Validate mandatory Acquisitions block
+        domain_mapping = {
+            "465-510": "FAM",
+            "540-580": "HEX",
+            "540-610": "TexasRed",
+            "610-670": "ROX",
+            "680-700": "Cy5",
+        }
+
+        channel_index_map = {}
+        for i, chan_node in enumerate(
+            root.findall(".//obj[@class='HTCChannel']")
+        ):  # [cite: 9]
+            name_node = chan_node.find("prop[@name='name']")
+            if name_node is not None and name_node.text:
+                raw_name = name_node.text.strip().upper()
+                domain_name = domain_mapping.get(raw_name, raw_name)
+                channel_index_map[str(i)] = domain_name
+        # Fallback for simpler unit testing
+        if not channel_index_map:
+            channel_index_map = {"0": "FAM"}
         acquisitions_node = root.find(".//Acquisitions")
         if acquisitions_node is None:
             raise ValueError(
@@ -168,15 +183,15 @@ class CyclerDataParser:
 
         results: list[dict[str, Any]] = []
 
-        # Process each sample independently
         for sample_node in acquisitions_node.findall("Sample"):
             sample_number = sample_node.get("Number", "Unknown")
             well_position = f"Sample_{sample_number}"
 
-            temperatures: list[float] = []
-            raw_fluorescence: list[float] = []
+            chan_data = {
+                chan_num: {"temperatures": [], "raw_fluorescence": []}
+                for chan_num in channel_index_map.keys()
+            }
 
-            # Filter and parse valid Acquisitions (Acq >= 46)
             for acq_node in sample_node.findall("Acq"):
                 try:
                     acq_num = int(acq_node.get("Number", "-1"))
@@ -184,8 +199,11 @@ class CyclerDataParser:
                     continue
 
                 if acq_num >= 46:
-                    chan_node = acq_node.find("Chan[@Number='0']")
-                    if chan_node is not None:
+                    for chan_node in acq_node.findall("Chan"):
+                        chan_num = chan_node.get("Number")
+                        if chan_num not in chan_data:
+                            continue
+
                         temp_node = chan_node.find("prop[@name='Temp']")
                         fluor_node = chan_node.find("prop[@name='Fluor']")
 
@@ -196,22 +214,25 @@ class CyclerDataParser:
                             and fluor_node.text
                         ):
                             try:
-                                temperatures.append(float(temp_node.text))
-                                raw_fluorescence.append(float(fluor_node.text))
+                                chan_data[chan_num]["temperatures"].append(
+                                    float(temp_node.text)
+                                )
+                                chan_data[chan_num]["raw_fluorescence"].append(
+                                    float(fluor_node.text)
+                                )
                             except ValueError, TypeError:
-                                # Defensively ignore corrupted numeric floats within a specific acquisition
                                 continue
 
-            # Construct the sanitized payload only if melt data exists for the sample
-            if temperatures and raw_fluorescence:
-                results.append(
-                    {
-                        "run_identifier": run_identifier,
-                        "well_position": well_position,
-                        "target_channel": "FAM",
-                        "temperatures": temperatures,
-                        "raw_fluorescence": raw_fluorescence,
-                    }
-                )
+            for chan_num, data in chan_data.items():
+                if data["temperatures"] and data["raw_fluorescence"]:
+                    results.append(
+                        {
+                            "run_identifier": run_identifier,
+                            "well_position": well_position,
+                            "target_channel": channel_index_map[chan_num],
+                            "temperatures": data["temperatures"],
+                            "raw_fluorescence": data["raw_fluorescence"],
+                        }
+                    )
 
         return results
