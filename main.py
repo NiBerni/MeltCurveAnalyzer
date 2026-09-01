@@ -2,11 +2,12 @@
 Application factory for the Flask server.
 """
 
-from flask import Flask, Response
+from flask import Flask, Response, g
 from flask_jwt_extended import JWTManager
 
 from app.api.routes import api_bp
 from app.config import JWT_SECRET_KEY
+from app.db.session import db_session
 
 
 def create_app() -> Flask:
@@ -29,6 +30,20 @@ def create_app() -> Flask:
             "DEMO ENVIRONMENT - RESEARCH USE ONLY. Not for diagnostic procedures."
         )
         return response
+
+    @app.teardown_appcontext
+    def shutdown_session(exception: BaseException | None = None) -> None:
+        """"""
+        failed = exception is not None or getattr(g, "transaction_failed", False)
+
+        if failed:
+            db_session.rollback()
+        else:
+            try:
+                db_session.commit()
+            except Exception:
+                db_session.rollback()
+        db_session.remove()
 
     return app
 

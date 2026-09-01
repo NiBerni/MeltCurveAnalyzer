@@ -64,7 +64,7 @@ class PcrRunRepository:
         )
 
         self.session.add(new_run)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(new_run)
 
         logger.info(f"Successfully created PcrRun with ID: {new_run.id}")
@@ -121,7 +121,7 @@ class SampleResultRepository:
         )
 
         self.session.add(new_result)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(new_result)
 
         logger.info(f"Successfully created SampleResult with ID: {new_result.id}")
@@ -174,7 +174,7 @@ class SampleResultRepository:
         result.override_reason = override_reason
         result.tech_validated_at = datetime.datetime.now(datetime.UTC)
 
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(result)
 
         logger.info(
@@ -210,7 +210,7 @@ class TemplateRepository:
         )
 
         self.session.add(new_template)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(new_template)
 
         logger.info(f"Successfully created AssayTemplate with ID: {new_template.id}")
