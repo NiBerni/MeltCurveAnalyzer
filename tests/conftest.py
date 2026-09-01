@@ -5,6 +5,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.types import ARRAY
+from werkzeug.security import generate_password_hash
 
 from app.db.models import Base, User
 
@@ -41,7 +42,9 @@ def db_session(db_engine: Engine) -> Generator[Session, None, None]:
 def user_instance(db_session: Session) -> User:
     """Provides a committed User instance to satisfy database foreign key constraints."""
     user = User(
-        username="test_importer", email="importer@local.test", password_hash="fake_hash"
+        username="test_importer",
+        email="importer@local.test",
+        password_hash=generate_password_hash("fake_hash"),
     )
     db_session.add(user)
     db_session.commit()

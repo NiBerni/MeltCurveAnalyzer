@@ -18,6 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from werkzeug.security import check_password_hash, generate_password_hash
 
 
 class Base(DeclarativeBase):
@@ -72,6 +73,18 @@ class User(Base):
     roles: Mapped[list["Role"]] = relationship(
         "Role", secondary=user_roles, back_populates="users"
     )
+
+    def set_password(self, password: str) -> None:
+        """
+        Creates a hash out of a clear-text password
+        """
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        """
+        Checks if the pw fits the hash of the pw
+        """
+        return check_password_hash(self.password_hash, password)
 
     def __repr__(self) -> str:
         """Standard f-string implementation for debugging/logging purposes."""

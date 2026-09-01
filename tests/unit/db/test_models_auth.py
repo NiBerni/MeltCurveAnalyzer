@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import Table
 from sqlalchemy.orm import Mapper
 from sqlalchemy.sql.sqltypes import Boolean, String, Uuid
+from werkzeug.security import generate_password_hash
 
 from app.db.models import Permission, Role, User, role_permissions, user_roles
 
@@ -24,7 +25,9 @@ def user_kwargs() -> UserKwargs:
         "id": uuid.uuid7(),  # Primary keys must use native PostgreSQL UUIDs generated via UUIDv7
         "username": "jdoe_senior",  # Expected String
         "email": "jdoe@example.com",  # Expected String
-        "password_hash": "secure_hash_string",  # Expected String
+        "password_hash": generate_password_hash(
+            "secure_hash_string"
+        ),  # Expected String
         "is_active": True,  # Expected Boolean
     }
 

@@ -104,7 +104,7 @@ def login() -> tuple[Any, int]:
         )
         user = session.execute(stmt).scalars().first()
 
-        if not user or user.password_hash != password:
+        if not user or not user.check_password(password):
             raise Unauthorized("Invalid credentials.")
 
         roles = [role.name for role in user.roles]
