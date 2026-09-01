@@ -12,6 +12,11 @@ from typing import Any, Callable, ParamSpec, TypeVar
 from loguru import logger
 
 from app.db.models import MeltCurve, Sample
+from app.exceptions import (
+    ControlValidationFailedError,
+    DataParsingError,
+    TemplateNotFoundError,
+)
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -82,14 +87,16 @@ class AnalysisService:
         # 1. Template Retrieval & Validation
         template = self.template_repo.get_by_identifier(template_identifier)
         if not template:
-            raise ValueError(f"Assay template not found: {template_identifier}")
+            raise TemplateNotFoundError(
+                f"Assay template not found: {template_identifier}"
+            )
 
         multiplex_mapping = getattr(template, "multiplex_mapping", {})
 
         # 2. Data Parsing
         parsed_data = self.parser.parse_roche_xml_mvp(file_content)
         if not parsed_data:
-            raise ValueError("Parsed data is empty or invalid.")
+            raise DataParsingError("Parsed data is empty or invalid.")
 
         # Extract run_identifier with fallback to filename
         run_identifier = parsed_data[0].get("run_identifier", filename)
@@ -157,14 +164,14 @@ class AnalysisService:
             if is_pc:
                 # Positive Control must detect at least one true target
                 if not any(classified_targets.values()):
-                    raise ValueError(
+                    raise ControlValidationFailedError(
                         f"Positive Control failure in well {well_pos}: No targets detected."
                     )
 
             if is_ntc:
                 # Negative Control must have no peaks and no escalations
                 if len(peaks) > 0 or escalated:
-                    raise ValueError(
+                    raise ControlValidationFailedError(
                         f"Negative Control contamination in well {well_pos}."
                     )
 

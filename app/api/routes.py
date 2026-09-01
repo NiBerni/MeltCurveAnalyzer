@@ -5,9 +5,9 @@ API endpoints delegating entirely to domain services and repositories.
 
 import functools
 import uuid
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 from flask_jwt_extended import (
     create_access_token,
     get_jwt,
@@ -54,7 +54,7 @@ def api_error_handler(func: Callable[..., Any]) -> Callable[..., Any]:
             return jsonify({"error": "Unauthorized", "message": str(e)}), 401
         except Forbidden as e:
             return jsonify({"error": "Forbidden", "message": str(e)}), 403
-        except Exception as e:
+        except Exception:
             logger.exception(f"Internal Server Error in {func.__name__}")
             return jsonify({"error": "Internal Server Error"}), 500
 
@@ -72,7 +72,7 @@ def require_roles(*allowed_roles: str) -> Callable[..., Any]:
                 raise Forbidden("Insufficient permissions for this action.")
             return func(*args, **kwargs)
 
-        return wrapper
+        return cast(Callable[..., Any], wrapper)
 
     return decorator
 
@@ -84,21 +84,6 @@ def login() -> tuple[Any, int]:
     data = request.get_json() or {}
     username = data.get("username", "")
     password = data.get("password", "")
-
-    # For MVP Test compatibility: shortcut authentication logic
-    # In production, we evaluate passwords against hashed values natively
-    # if username == "valid_operator" and password != "correct_password":
-    #     raise Unauthorized("Invalid credentials.")
-    #
-    # if username == "valid_operator" and password == "correct_password":
-    #     access_token = create_access_token(
-    #         identity="mock-uuid",
-    #         additional_claims={"roles": ["Operator"], "email": "operator@lab.local"},
-    #     )
-    #     return jsonify({"access_token": access_token}), 200
-    #
-    # if username == "non_existent_user":
-    #     raise Unauthorized("Invalid credentials.")
 
     # Strict PEP 750 authentication lookup example (defense-in-depth)
     try:
