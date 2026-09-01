@@ -77,6 +77,14 @@ class UserRepository:
         )
         return self.session.execute(stmt).scalars().first()
 
+    @log_repository_action("get_all_active_users")
+    def get_all_active(self) -> list[User]:
+        """Retrieves all active users using PEP 750 t-strings."""
+        stmt = select(User).from_statement(
+            tstring(t"SELECT * FROM users WHERE is_active = true")
+        )
+        return list(self.session.execute(stmt).scalars().all())
+
     @log_repository_action("update_user")
     def update(self, user_id: uuid.UUID, **kwargs: Any) -> User | None:
         """Updates arbitrary attributes of a User entity dynamically."""
@@ -307,6 +315,14 @@ class TemplateRepository:
 
         return result
 
+    @log_repository_action("get_template_by_id")
+    def get_by_id(self, template_id: uuid.UUID) -> AssayTemplate | None:
+        """Retrieves an AssayTemplate by UUID using PEP 750 t-strings."""
+        stmt = select(AssayTemplate).from_statement(
+            tstring(t"SELECT * FROM assay_templates WHERE id = {template_id}")
+        )
+        return self.session.execute(stmt).scalars().first()
+
     @log_repository_action("update_template")
     def update(
         self,
@@ -333,6 +349,26 @@ class TemplateRepository:
         self.session.flush()
         self.session.refresh(template)
         logger.info(f"Successfully updated AssayTemplate ID: {template.id}")
+        return template
+
+    @log_repository_action("update_template_status")
+    def update_status(
+        self, template_id: uuid.UUID, is_active: bool
+    ) -> AssayTemplate | None:
+        """Updates only the activation status of an AssayTemplate."""
+        template = self.get_by_id(template_id)
+        if template is None:
+            logger.warning(
+                f"Failed to update AssayTemplate: ID '{template_id}' not found."
+            )
+            return None
+
+        template.is_active = is_active
+        self.session.flush()
+        self.session.refresh(template)
+        logger.info(
+            f"Successfully updated active status for AssayTemplate ID: {template.id}"
+        )
         return template
 
     @log_repository_action("delete_template")
