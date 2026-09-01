@@ -27,7 +27,7 @@ from app.api.schemas import (
 )
 from app.core.analyzer import MeltCurveAnalyzer
 from app.core.classifier import ClusterClassifier
-from app.db.models import AssayTemplate, User
+from app.db.models import User
 from app.db.repositories import (
     PcrRunRepository,
     SampleResultRepository,
