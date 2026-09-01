@@ -12,7 +12,7 @@ from sqlalchemy import select, tstring
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.db.models import AssayTemplate, PcrRun, SampleResult
+from app.db.models import AssayTemplate, PcrRun, SampleResult, User
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -35,6 +35,73 @@ def log_repository_action(action_name: str) -> Callable[[F], F]:
         return cast(F, wrapper)
 
     return decorator
+
+
+class UserRepository:
+    """
+    Repository handling persistence and retrieval logic for User entities.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    @log_repository_action("create_user")
+    def create(self, username: str, email: str, password: str) -> User:
+        """Creates a new User, ensuring password hashing occurs before DB flush."""
+        new_user = User(
+            username=username,
+            email=email,
+        )
+        new_user.set_password(password)
+
+        self.session.add(new_user)
+        self.session.flush()
+        self.session.refresh(new_user)
+
+        logger.info(f"Successfully created User '{username}' with ID: {new_user.id}")
+        return new_user
+
+    @log_repository_action("get_user_by_id")
+    def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        """Retrieves a User by their ID using PEP 750 t-strings."""
+        stmt = select(User).from_statement(
+            tstring(t"SELECT * FROM users WHERE id = {user_id}")
+        )
+        return self.session.execute(stmt).scalars().first()
+
+    @log_repository_action("get_user_by_username")
+    def get_by_username(self, username: str) -> User | None:
+        """Retrieves a User by their username using PEP 750 t-strings."""
+        stmt = select(User).from_statement(
+            tstring(t"SELECT * FROM users WHERE username = {username}")
+        )
+        return self.session.execute(stmt).scalars().first()
+
+    @log_repository_action("update_user")
+    def update(self, user_id: uuid.UUID, **kwargs: Any) -> User | None:
+        """Updates arbitrary attributes of a User entity dynamically."""
+        user = self.get_by_id(user_id)
+        if user is None:
+            logger.warning(f"Failed to update User: ID '{user_id}' not found.")
+            return None
+
+        for key, value in kwargs.items():
+            if hasattr(user, key):
+                setattr(user, key, value)
+
+        self.session.flush()
+        self.session.refresh(user)
+        logger.info(f"Successfully updated User ID: {user.id}")
+        return user
+
+    @log_repository_action("delete_user")
+    def delete(self, user_id: uuid.UUID) -> None:
+        """Soft-deactivates a user to preserve database relationships and audit trails."""
+        user = self.get_by_id(user_id)
+        if user is not None:
+            user.is_active = False
+            self.session.flush()
+            logger.info(f"Successfully soft-deleted User ID: {user_id}")
 
 
 class PcrRunRepository:
@@ -64,7 +131,7 @@ class PcrRunRepository:
         )
 
         self.session.add(new_run)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(new_run)
 
         logger.info(f"Successfully created PcrRun with ID: {new_run.id}")
@@ -121,7 +188,7 @@ class SampleResultRepository:
         )
 
         self.session.add(new_result)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(new_result)
 
         logger.info(f"Successfully created SampleResult with ID: {new_result.id}")
@@ -174,7 +241,7 @@ class SampleResultRepository:
         result.override_reason = override_reason
         result.tech_validated_at = datetime.datetime.now(datetime.UTC)
 
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(result)
 
         logger.info(
@@ -210,7 +277,7 @@ class TemplateRepository:
         )
 
         self.session.add(new_template)
-        self.session.commit()
+        self.session.flush()
         self.session.refresh(new_template)
 
         logger.info(f"Successfully created AssayTemplate with ID: {new_template.id}")
@@ -239,3 +306,44 @@ class TemplateRepository:
             logger.info(f"Successfully fetched AssayTemplate '{template_identifier}'.")
 
         return result
+
+    @log_repository_action("update_template")
+    def update(
+        self,
+        template_id: uuid.UUID,
+        multiplex_mapping: dict[str, list[str]],
+        description: str | None = None,
+    ) -> AssayTemplate | None:
+        """Updates a template's mapping and description natively."""
+        stmt = select(AssayTemplate).from_statement(
+            tstring(t"SELECT * FROM assay_templates WHERE id = {template_id}")
+        )
+        template = self.session.execute(stmt).scalars().first()
+
+        if template is None:
+            logger.warning(
+                f"Failed to update AssayTemplate: ID '{template_id}' not found."
+            )
+            return None
+
+        template.multiplex_mapping = multiplex_mapping
+        if description is not None:
+            template.description = description
+
+        self.session.flush()
+        self.session.refresh(template)
+        logger.info(f"Successfully updated AssayTemplate ID: {template.id}")
+        return template
+
+    @log_repository_action("delete_template")
+    def delete(self, template_id: uuid.UUID) -> None:
+        """Soft-deactivates an AssayTemplate to prevent breaking existing analytical records."""
+        stmt = select(AssayTemplate).from_statement(
+            tstring(t"SELECT * FROM assay_templates WHERE id = {template_id}")
+        )
+        template = self.session.execute(stmt).scalars().first()
+
+        if template is not None:
+            template.is_active = False
+            self.session.flush()
+            logger.info(f"Successfully soft-deleted AssayTemplate ID: {template_id}")

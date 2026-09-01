@@ -7,7 +7,7 @@ import functools
 import uuid
 from typing import Any, Callable, cast
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from flask_jwt_extended import (
     create_access_token,
     get_jwt,
@@ -46,15 +46,20 @@ def api_error_handler(func: Callable[..., Any]) -> Callable[..., Any]:
             return func(*args, **kwargs)
         except DataParsingError as e:
             # 400 Bad Request
+            g.transaction_failed = True
             return jsonify({"error": "Bad Request", "message": str(e)}), 400
         except PCRError as e:
             # 422 Unprocessable Entity
+            g.transaction_failed = True
             return jsonify({"error": "Unprocessable Entity", "message": str(e)}), 422
         except Unauthorized as e:
+            g.transaction_failed = True
             return jsonify({"error": "Unauthorized", "message": str(e)}), 401
         except Forbidden as e:
+            g.transaction_failed = True
             return jsonify({"error": "Forbidden", "message": str(e)}), 403
         except Exception:
+            g.transaction_failed = True
             logger.exception(f"Internal Server Error in {func.__name__}")
             return jsonify({"error": "Internal Server Error"}), 500
 
