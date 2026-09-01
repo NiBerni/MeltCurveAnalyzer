@@ -18,7 +18,7 @@ from loguru import logger
 from sqlalchemy import select, tstring
 from werkzeug.exceptions import BadRequest, Forbidden, Unauthorized
 
-from app.api.schemas import ValidationPayload
+from app.api.schemas import TemplateUpdatePayload, UserCreatePayload, ValidationPayload
 from app.core.analyzer import MeltCurveAnalyzer
 from app.core.classifier import ClusterClassifier
 from app.db.models import AssayTemplate, User
@@ -26,6 +26,7 @@ from app.db.repositories import (
     PcrRunRepository,
     SampleResultRepository,
     TemplateRepository,
+    UserRepository,
 )
 
 # Assume database session and services are managed/injected via a registry or Flask g
@@ -132,25 +133,98 @@ def auth_me() -> tuple[Any, int]:
     ), 200
 
 
-@api_bp.get("/templates")
+@api_bp.get("/users")
+@api_error_handler
+@require_roles("Admin")
+def get_users() -> tuple[Any, int]:
+    """Retrieves all active users. Restricted to Admin role."""
+    session = get_session()
+    repo = UserRepository(session)
+    users = repo.get_all_active()
+
+    return jsonify([{"id": str(u.id), "username": u.username} for u in users]), 200
+
+
+@api_bp.post("/users")
+@api_error_handler
+@require_roles("Admin")
+def create_user() -> tuple[Any, int]:
+    """Provisions a new user in the system."""
+    try:
+        payload = UserCreatePayload.from_dict(request.get_json())
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    session = get_session()
+    repo = UserRepository(session)
+
+    # Note: Role assignment logic should be mapped via a RoleRepository
+    # depending on the final Many-to-Many IAM architecture.
+    user = repo.create(
+        username=payload.username, email=payload.email, password=payload.password
+    )
+
+    return jsonify({"id": str(user.id), "username": user.username}), 201
+
+
+@api_bp.delete("/users/<uuid:user_id>")
+@api_error_handler
+@require_roles("Admin")
+def delete_user(user_id: uuid.UUID) -> tuple[Any, int]:
+    """Soft-deletes a user to preserve audit logs and relationships."""
+    session = get_session()
+    repo = UserRepository(session)
+    repo.delete(user_id)
+
+    return jsonify({"message": f"User {user_id} deactivated"}), 200
+
+
+@api_bp.get("/templates/<uuid:template_id>")
 @api_error_handler
 @jwt_required()
-def get_templates() -> tuple[Any, int]:
-    """Retrieves available PCR assay templates for selection."""
+def get_template(template_id: uuid.UUID) -> tuple[Any, int]:
+    """Retrieves specific assay configuration details. Available to all operators."""
     session = get_session()
-    # Simplified fetch for the MVP integration tests
-    stmt = select(AssayTemplate).from_statement(
-        tstring(t"SELECT * FROM assay_templates LIMIT 100")
-    )
-    templates = session.execute(stmt).scalars().all()
+    repo = TemplateRepository(session)
+    template = repo.get_by_id(template_id)
 
-    # Fallback structure if database is unseeded during testing
-    if not templates:
-        return jsonify([{"id": "template-uuid", "name": "Assay A"}]), 200
+    if not template:
+        return jsonify({"error": "Template not found"}), 404
 
-    return jsonify(
-        [{"id": str(t.id), "name": t.template_identifier} for t in templates]
-    ), 200
+    return jsonify({"id": str(template.id), "name": template.template_identifier}), 200
+
+
+@api_bp.put("/templates/<uuid:template_id>")
+@api_error_handler
+@require_roles("Senior", "Admin")
+def update_template(template_id: uuid.UUID) -> tuple[Any, int]:
+    """Updates activation status or configuration parameters of an AssayTemplate."""
+    try:
+        payload = TemplateUpdatePayload.from_dict(request.get_json())
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    session = get_session()
+    repo = TemplateRepository(session)
+
+    template = repo.update_status(template_id=template_id, is_active=payload.is_active)
+
+    if not template:
+        return jsonify({"error": "Template not found"}), 404
+
+    return jsonify({"id": str(template.id), "is_active": template.is_active}), 200
+
+
+@api_bp.delete("/templates/<uuid:template_id>")
+@api_error_handler
+@require_roles("Senior", "Admin")
+def delete_template(template_id: uuid.UUID) -> tuple[Any, int]:
+    """Soft-deletes an AssayTemplate to prevent breaking existing analytical records."""
+    session = get_session()
+    repo = TemplateRepository(session)
+    repo.delete(template_id)
+
+    return jsonify({"message": f"Template {template_id} deleted"}), 200
 
 
 @api_bp.post("/runs/upload")
