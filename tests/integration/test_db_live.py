@@ -5,6 +5,7 @@ from collections.abc import Generator
 import pytest
 from sqlalchemy import create_engine, select, tstring
 from sqlalchemy.orm import Session, sessionmaker
+from werkzeug.security import generate_password_hash
 
 from app.db.models import Base, PcrRun, Sample, SampleResult, User
 from app.db.repositories import (
@@ -64,7 +65,7 @@ def test_user_creation_and_query(
         id=test_id,
         username=username,
         email=email,
-        password_hash="hashed_secret_string",
+        password_hash=generate_password_hash("hashed_secret_string"),
         is_active=is_active,
     )
     db_session_pg.add(new_user)
@@ -118,7 +119,7 @@ def test_pcr_run_repository_create_and_get(db_session_pg: Session) -> None:
         id=user_id,
         username=f"importer_admin_{unique_tag}",
         email=f"importer_{unique_tag}@example.com",
-        password_hash="hash",
+        password_hash=generate_password_hash("hash"),
         is_active=True,
     )
     db_session_pg.add(new_user)
@@ -165,7 +166,7 @@ def test_sample_result_repository_update_technical_validation(
         id=validator_id,
         username=f"validator_senior_{unique_tag}",
         email=f"validator_{unique_tag}@example.com",
-        password_hash="hash",
+        password_hash=generate_password_hash("hash"),
         is_active=True,
     )
     db_session_pg.add(validator)
