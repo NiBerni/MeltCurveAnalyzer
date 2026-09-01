@@ -292,6 +292,7 @@ class AssayTemplate(Base):
 
     # Optional Attributes
     description: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     def __repr__(self) -> str:
         """Standard f-string implementation for debugging/logging purposes."""
