@@ -14,6 +14,7 @@ from flask_jwt_extended import (
     get_jwt_identity,
     jwt_required,
 )
+from loguru import logger
 from sqlalchemy import select, tstring
 from werkzeug.exceptions import BadRequest, Forbidden, Unauthorized
 
@@ -29,6 +30,7 @@ from app.db.repositories import (
 
 # Assume database session and services are managed/injected via a registry or Flask g
 from app.db.session import get_session
+from app.exceptions import DataParsingError, PCRError
 from app.ingestion.parser import CyclerDataParser
 from app.services.analysis_service import AnalysisService
 
@@ -42,17 +44,19 @@ def api_error_handler(func: Callable[..., Any]) -> Callable[..., Any]:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return func(*args, **kwargs)
-        except (ValueError, BadRequest) as e:
+        except DataParsingError as e:
+            # 400 Bad Request
             return jsonify({"error": "Bad Request", "message": str(e)}), 400
+        except PCRError as e:
+            # 422 Unprocessable Entity
+            return jsonify({"error": "Unprocessable Entity", "message": str(e)}), 422
         except Unauthorized as e:
             return jsonify({"error": "Unauthorized", "message": str(e)}), 401
         except Forbidden as e:
             return jsonify({"error": "Forbidden", "message": str(e)}), 403
         except Exception as e:
-            current_app.logger.error(f"Internal Error in {func.__name__}: {e}")
+            logger.exception(f"Internal Server Error in {func.__name__}")
             return jsonify({"error": "Internal Server Error"}), 500
-
-    return wrapper
 
 
 def require_roles(*allowed_roles: str) -> Callable[..., Any]:
