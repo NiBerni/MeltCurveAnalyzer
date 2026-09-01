@@ -4,6 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.exceptions import ControlValidationFailedError, TemplateNotFoundError
+
 try:
     from app.services.analysis_service import AnalysisService
 except ImportError:
@@ -171,7 +173,7 @@ def test_process_run_missing_template(
     mock_template_repo.get_by_identifier.return_value = None
 
     # Act & Assert
-    with pytest.raises(ValueError, match=template_identifier):
+    with pytest.raises(TemplateNotFoundError, match=template_identifier):
         analysis_service.process_run(
             file_content=file_content,
             filename=filename,
@@ -227,7 +229,9 @@ def test_process_run_invalid_positive_control(
     mock_classifier.classify_channel_targets.return_value = {"Target A": False}
 
     # Act & Assert
-    with pytest.raises(ValueError, match=r"(?i)positive control|PC|control"):
+    with pytest.raises(
+        ControlValidationFailedError, match=r"(?i)positive control|PC|control"
+    ):
         analysis_service.process_run(
             file_content=file_content,
             filename=filename,
@@ -280,7 +284,9 @@ def test_process_run_invalid_negative_control(
     mock_classifier.classify_channel_targets.return_value = {"Target A": True}
 
     # Act & Assert
-    with pytest.raises(ValueError, match=r"(?i)negative control|NTC|contamination"):
+    with pytest.raises(
+        ControlValidationFailedError, match=r"(?i)negative control|NTC|contamination"
+    ):
         analysis_service.process_run(
             file_content=file_content,
             filename=filename,

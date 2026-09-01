@@ -58,7 +58,7 @@ def api_error_handler(func: Callable[..., Any]) -> Callable[..., Any]:
             logger.exception(f"Internal Server Error in {func.__name__}")
             return jsonify({"error": "Internal Server Error"}), 500
 
-        return cast(Callable[..., Any], wrapper)
+    return cast(Callable[..., Any], wrapper)
 
 
 def require_roles(*allowed_roles: str) -> Callable[..., Any]:
