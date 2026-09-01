@@ -14,11 +14,17 @@ from flask_jwt_extended import (
     get_jwt_identity,
     jwt_required,
 )
+from flask_jwt_extended.exceptions import JWTExtendedException
 from loguru import logger
 from sqlalchemy import select, tstring
-from werkzeug.exceptions import BadRequest, Forbidden, Unauthorized
+from werkzeug.exceptions import BadRequest, Forbidden, HTTPException, Unauthorized
 
-from app.api.schemas import TemplateUpdatePayload, UserCreatePayload, ValidationPayload
+from app.api.schemas import (
+    TemplateCreatePayload,
+    TemplateUpdatePayload,
+    UserCreatePayload,
+    ValidationPayload,
+)
 from app.core.analyzer import MeltCurveAnalyzer
 from app.core.classifier import ClusterClassifier
 from app.db.models import AssayTemplate, User
@@ -53,12 +59,12 @@ def api_error_handler(func: Callable[..., Any]) -> Callable[..., Any]:
             # 422 Unprocessable Entity
             g.transaction_failed = True
             return jsonify({"error": "Unprocessable Entity", "message": str(e)}), 422
-        except Unauthorized as e:
+        except JWTExtendedException as e:
             g.transaction_failed = True
             return jsonify({"error": "Unauthorized", "message": str(e)}), 401
-        except Forbidden as e:
+        except HTTPException as e:
             g.transaction_failed = True
-            return jsonify({"error": "Forbidden", "message": str(e)}), 403
+            return jsonify({"error": e.name, "message": e.description}), e.code
         except Exception:
             g.transaction_failed = True
             logger.exception(f"Internal Server Error in {func.__name__}")
@@ -177,6 +183,28 @@ def delete_user(user_id: uuid.UUID) -> tuple[Any, int]:
     repo.delete(user_id)
 
     return jsonify({"message": f"User {user_id} deactivated"}), 200
+
+
+@api_bp.post("/templates")
+@api_error_handler
+@require_roles("Senior", "Admin")
+def create_template() -> tuple[Any, int]:
+    """Creates a new AssayTemplate. Restricted to Senior and Admin."""
+    try:
+        payload = TemplateCreatePayload.from_dict(request.get_json())
+    except ValueError as e:
+        raise BadRequest(str(e))
+
+    session = get_session()
+    repo = TemplateRepository(session)
+    template = repo.create(
+        template_identifier=payload.template_identifier,
+        multiplex_mapping=payload.multiplex_mapping,
+        description=payload.description,
+    )
+    return jsonify(
+        {"id": str(template.id), "identifier": template.template_identifier}
+    ), 201
 
 
 @api_bp.get("/templates/<uuid:template_id>")
