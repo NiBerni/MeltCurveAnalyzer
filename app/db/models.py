@@ -1,9 +1,10 @@
 """
-Database models for the Identity & Access Management (IAM) layer.
+Database models for the Identity & Access Management (IAM) and PCR Domain layers.
 """
 
 import datetime
 import uuid
+from typing import Any
 
 from sqlalchemy import (
     JSON,
@@ -34,7 +35,6 @@ user_roles = Table(
     Column("role_id", Uuid, ForeignKey("roles.id"), primary_key=True),
 )
 
-
 role_permissions = Table(
     "role_permission",
     Base.metadata,
@@ -64,31 +64,31 @@ class User(Base):
         "PcrRun", back_populates="imported_by"
     )
 
-    # One-toMany: User as the technical validator of sample results
+    # One-to-Many: User as the technical validator of sample results
     sample_results: Mapped[list["SampleResult"]] = relationship(
         "SampleResult", back_populates="tech_validated_by"
     )
 
-    # Many-to-Many: User's assigned roles (Admin, TA, AL, Arzt, ...) via user_roles
+    # Many-to-Many: User's assigned roles (Admin, Senior, Operator, ...) via user_roles
     roles: Mapped[list["Role"]] = relationship(
         "Role", secondary=user_roles, back_populates="users"
     )
 
     def set_password(self, password: str) -> None:
         """
-        Creates a hash out of a clear-text password
+        Creates a hash out of a clear-text password.
         """
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password: str) -> bool:
         """
-        Checks if the pw fits the hash of the pw
+        Checks if the password fits the stored password hash.
         """
         return check_password_hash(self.password_hash, password)
 
     def __repr__(self) -> str:
         """Standard f-string implementation for debugging/logging purposes."""
-        return f'<User(id={self.id}, username="{self.username}",  is_active={self.is_active})>'
+        return f'<User(id={self.id}, username="{self.username}", is_active={self.is_active})>'
 
 
 class Role(Base):
@@ -100,7 +100,6 @@ class Role(Base):
     __tablename__ = "roles"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
-
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -113,9 +112,7 @@ class Role(Base):
     )
 
     def __repr__(self) -> str:
-        """
-        Standard f-string implementation for debugging/logging purposes.
-        """
+        """Standard f-string implementation for debugging/logging purposes."""
         return f'<Role(id={self.id}, name="{self.name}")>'
 
 
@@ -128,7 +125,6 @@ class Permission(Base):
     __tablename__ = "permissions"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
-
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -137,9 +133,7 @@ class Permission(Base):
     )
 
     def __repr__(self) -> str:
-        """
-        Standard f-string implementation for debugging/logging purposes.
-        """
+        """Standard f-string implementation for debugging/logging purposes."""
         return f'<Permission(id={self.id}, name="{self.name}")>'
 
 
@@ -162,6 +156,7 @@ class PcrRun(Base):
     imported_by_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id"), nullable=False
     )
+
     # Relationships
     imported_by: Mapped["User"] = relationship("User", back_populates="pcr_runs")
 
@@ -172,7 +167,7 @@ class PcrRun(Base):
     def __repr__(self) -> str:
         """
         Standard f-string implementation for debugging/logging purposes.
-        Returns a human-readable representation of the PCR Run
+        Returns a human-readable representation of the PCR Run.
         """
         return f'<PcrRun(id={self.id}, run_identifier="{self.run_identifier}")>'
 
@@ -185,6 +180,7 @@ class Sample(Base):
     __tablename__ = "samples"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
+
     pcr_run_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("pcr_runs.id"), nullable=False
     )
@@ -195,16 +191,21 @@ class Sample(Base):
     melt_curves: Mapped[list["MeltCurve"]] = relationship(
         back_populates="sample", cascade="all, delete-orphan"
     )
+    sample_results: Mapped[list["SampleResult"]] = relationship(
+        "SampleResult", back_populates="sample", cascade="all, delete-orphan"
+    )
 
 
 class MeltCurve(Base):
     __tablename__ = "melt_curves"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid7)
+
     sample_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("samples.id"), nullable=False
     )
     target_channel: Mapped[str] = mapped_column(String, nullable=False)
+
     temperatures: Mapped[list[float]] = mapped_column(
         ARRAY(Float).with_variant(JSON, "sqlite"), nullable=False
     )
@@ -245,7 +246,7 @@ class SampleResult(Base):
         ForeignKey("users.id"), nullable=True
     )
     tech_validated_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime, nullable=True
+        DateTime(timezone=True), nullable=True
     )
     override_reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -254,10 +255,11 @@ class SampleResult(Base):
         String, nullable=False, default="pending"
     )
     exported_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime, nullable=True
+        DateTime(timezone=True), nullable=True
     )
 
     # Relationships
+    sample: Mapped["Sample"] = relationship("Sample", back_populates="sample_results")
     tech_validated_by: Mapped["User"] = relationship(
         "User", back_populates="sample_results", uselist=False
     )
@@ -286,9 +288,7 @@ class AssayTemplate(Base):
     template_identifier: Mapped[str] = mapped_column(
         String, unique=True, nullable=False
     )
-    multiplex_mapping: Mapped[dict[str, list[str]]] = mapped_column(
-        JSON, nullable=False
-    )
+    multiplex_mapping: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
     # Optional Attributes
     description: Mapped[str | None] = mapped_column(String, nullable=True)

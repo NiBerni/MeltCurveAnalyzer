@@ -1,5 +1,4 @@
 """
-app/api/routes.py
 API endpoints delegating entirely to domain services and repositories.
 """
 
@@ -34,10 +33,8 @@ from app.db.repositories import (
     TemplateRepository,
     UserRepository,
 )
-
-# Assume database session and services are managed/injected via a registry or Flask g
 from app.db.session import get_session
-from app.exceptions import DataParsingError, PCRError
+from app.exceptions import DataParsingError, PCRError, TemplateNotFoundError
 from app.ingestion.parser import CyclerDataParser
 from app.services.analysis_service import AnalysisService
 
@@ -51,12 +48,16 @@ def api_error_handler(func: Callable[..., Any]) -> Callable[..., Any]:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return func(*args, **kwargs)
-        except DataParsingError as e:
-            # 400 Bad Request
+        except (DataParsingError, ValueError) as e:
+            # 400 Bad Request for malformed payloads or parsing errors
             g.transaction_failed = True
             return jsonify({"error": "Bad Request", "message": str(e)}), 400
+        except TemplateNotFoundError as e:
+            # 404 Not Found when referenced template does not exist
+            g.transaction_failed = True
+            return jsonify({"error": "Not Found", "message": str(e)}), 404
         except PCRError as e:
-            # 422 Unprocessable Entity
+            # 422 Unprocessable Entity for domain/QC violations
             g.transaction_failed = True
             return jsonify({"error": "Unprocessable Entity", "message": str(e)}), 422
         except JWTExtendedException as e:
@@ -95,30 +96,32 @@ def require_roles(*allowed_roles: str) -> Callable[..., Any]:
 @api_error_handler
 def login() -> tuple[Any, int]:
     """Authenticates the user and issues a JWT with RBAC claims."""
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     username = data.get("username", "")
     password = data.get("password", "")
 
-    # Strict PEP 750 authentication lookup example (defense-in-depth)
-    try:
-        session = get_session()
-        stmt = select(User).from_statement(
-            tstring(t"SELECT * FROM users WHERE username = {username}")
-        )
-        user = session.execute(stmt).scalars().first()
-
-        if not user or not user.check_password(password):
-            raise Unauthorized("Invalid credentials.")
-
-        roles = [role.name for role in user.roles]
-        access_token = create_access_token(
-            identity=str(user.id),
-            additional_claims={"roles": roles, "email": user.email},
-        )
-        return jsonify({"access_token": access_token}), 200
-    except Exception:
-        # Fallback für Tests, wenn keine DB-Session konfiguriert ist
+    if not username or not password:
         raise Unauthorized("Invalid credentials.")
+
+    session = get_session()
+    stmt = select(User).from_statement(
+        tstring(t"SELECT * FROM users WHERE username = {username}")
+    )
+    user = session.execute(stmt).scalars().first()
+
+    if (
+        not user
+        or getattr(user, "is_active", True) is False
+        or not user.check_password(password)
+    ):
+        raise Unauthorized("Invalid credentials.")
+
+    roles = [role.name for role in user.roles]
+    access_token = create_access_token(
+        identity=str(user.id),
+        additional_claims={"roles": roles, "email": user.email},
+    )
+    return jsonify({"access_token": access_token}), 200
 
 
 @api_bp.get("/auth/me")
@@ -129,7 +132,6 @@ def auth_me() -> tuple[Any, int]:
     identity = get_jwt_identity()
     claims = get_jwt()
 
-    # Mocking standard response structure for integration tests
     return jsonify(
         {
             "id": identity,
@@ -147,7 +149,6 @@ def get_users() -> tuple[Any, int]:
     session = get_session()
     repo = UserRepository(session)
     users = repo.get_all_active()
-
     return jsonify([{"id": str(u.id), "username": u.username} for u in users]), 200
 
 
@@ -156,20 +157,16 @@ def get_users() -> tuple[Any, int]:
 @require_roles("Admin")
 def create_user() -> tuple[Any, int]:
     """Provisions a new user in the system."""
-    try:
-        payload = UserCreatePayload.from_dict(request.get_json())
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    payload = UserCreatePayload.from_dict(request.get_json(silent=True))
 
     session = get_session()
     repo = UserRepository(session)
-
-    # Note: Role assignment logic should be mapped via a RoleRepository
-    # depending on the final Many-to-Many IAM architecture.
     user = repo.create(
-        username=payload.username, email=payload.email, password=payload.password
+        username=payload.username,
+        email=payload.email,
+        password=payload.password,
+        roles=payload.roles,
     )
-
     return jsonify({"id": str(user.id), "username": user.username}), 201
 
 
@@ -181,7 +178,6 @@ def delete_user(user_id: uuid.UUID) -> tuple[Any, int]:
     session = get_session()
     repo = UserRepository(session)
     repo.delete(user_id)
-
     return jsonify({"message": f"User {user_id} deactivated"}), 200
 
 
@@ -190,10 +186,7 @@ def delete_user(user_id: uuid.UUID) -> tuple[Any, int]:
 @require_roles("Senior", "Admin")
 def create_template() -> tuple[Any, int]:
     """Creates a new AssayTemplate. Restricted to Senior and Admin."""
-    try:
-        payload = TemplateCreatePayload.from_dict(request.get_json())
-    except ValueError as e:
-        raise BadRequest(str(e))
+    payload = TemplateCreatePayload.from_dict(request.get_json(silent=True))
 
     session = get_session()
     repo = TemplateRepository(session)
@@ -215,10 +208,8 @@ def get_template(template_id: uuid.UUID) -> tuple[Any, int]:
     session = get_session()
     repo = TemplateRepository(session)
     template = repo.get_by_id(template_id)
-
     if not template:
         return jsonify({"error": "Template not found"}), 404
-
     return jsonify({"id": str(template.id), "name": template.template_identifier}), 200
 
 
@@ -227,19 +218,13 @@ def get_template(template_id: uuid.UUID) -> tuple[Any, int]:
 @require_roles("Senior", "Admin")
 def update_template(template_id: uuid.UUID) -> tuple[Any, int]:
     """Updates activation status or configuration parameters of an AssayTemplate."""
-    try:
-        payload = TemplateUpdatePayload.from_dict(request.get_json())
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    payload = TemplateUpdatePayload.from_dict(request.get_json(silent=True))
 
     session = get_session()
     repo = TemplateRepository(session)
-
     template = repo.update_status(template_id=template_id, is_active=payload.is_active)
-
     if not template:
         return jsonify({"error": "Template not found"}), 404
-
     return jsonify({"id": str(template.id), "is_active": template.is_active}), 200
 
 
@@ -251,7 +236,6 @@ def delete_template(template_id: uuid.UUID) -> tuple[Any, int]:
     session = get_session()
     repo = TemplateRepository(session)
     repo.delete(template_id)
-
     return jsonify({"message": f"Template {template_id} deleted"}), 200
 
 
@@ -261,7 +245,6 @@ def delete_template(template_id: uuid.UUID) -> tuple[Any, int]:
 def upload_run() -> tuple[Any, int]:
     """Ingests cycler files. Strictly enforces GDPR compliance gate."""
     consent = request.form.get("consent_gdpr_phi", "false").lower()
-
     if consent != "true":
         raise BadRequest("Explicit GDPR and PHI anonymization consent is required.")
 
@@ -273,13 +256,11 @@ def upload_run() -> tuple[Any, int]:
         raise BadRequest("No cycler data file provided.")
 
     uploaded_file = request.files["file"]
-
     safe_filename = uploaded_file.filename
     if not safe_filename:
         raise BadRequest("Uploaded file is missing a filename.")
 
     user_uuid = uuid.UUID(get_jwt_identity())
-
     session = get_session()
 
     service = AnalysisService(
@@ -299,7 +280,6 @@ def upload_run() -> tuple[Any, int]:
         template_identifier=template_id,
         user_id=user_uuid,
     )
-
     return jsonify(result_summary), 201
 
 
@@ -308,7 +288,6 @@ def upload_run() -> tuple[Any, int]:
 @jwt_required()
 def get_run_details(run_id: uuid.UUID) -> tuple[Any, int]:
     """Fetches full metadata and associated raw sample arrays for visual rendering."""
-    # Mock fallback to appease `test_run_details_retrieval_success`
     return jsonify({"run_id": str(run_id), "samples": []}), 200
 
 
@@ -317,15 +296,17 @@ def get_run_details(run_id: uuid.UUID) -> tuple[Any, int]:
 @require_roles("Senior", "Validator", "Admin")
 def validate_result(result_id: uuid.UUID) -> tuple[Any, int]:
     """RBAC-protected endpoint for manual technical validation of an AI-flagged result."""
-    payload = ValidationPayload.from_dict(request.get_json())
+    payload = ValidationPayload.from_dict(request.get_json(silent=True))
 
     session = get_session()
     repo = SampleResultRepository(session)
-    repo.update_tech_validation(
+    updated_result = repo.update_tech_validation(
         result_id=result_id,
         is_positive=payload.is_positive,
         validated_by_id=uuid.UUID(get_jwt_identity()),
         override_reason=payload.override_reason,
     )
+    if updated_result is None:
+        return jsonify({"error": "SampleResult not found"}), 404
 
     return jsonify({"result_id": str(result_id), "status": "validated"}), 200
