@@ -12,7 +12,7 @@ from sqlalchemy import select, tstring
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.db.models import AssayTemplate, PcrRun, SampleResult, User
+from app.db.models import AssayTemplate, PcrRun, Role, SampleResult, User
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -42,22 +42,40 @@ class UserRepository:
     Repository handling persistence and retrieval logic for User entities.
     """
 
+    _ALLOWED_UPDATE_FIELDS = {"username", "email", "is_active"}
+
     def __init__(self, session: Session) -> None:
         self.session = session
 
     @log_repository_action("create_user")
-    def create(self, username: str, email: str, password: str) -> User:
-        """Creates a new User, ensuring password hashing occurs before DB flush."""
+    def create(
+        self,
+        username: str,
+        email: str,
+        password: str,
+        roles: list[str] | None = None,
+    ) -> User:
+        """Creates a new User, ensuring password hashing and optional role assignment before DB flush."""
         new_user = User(
             username=username,
             email=email,
         )
         new_user.set_password(password)
 
+        if roles:
+            for role_name in roles:
+                stmt = select(Role).from_statement(
+                    tstring(t"SELECT * FROM roles WHERE name = {role_name}")
+                )
+                role_obj = self.session.execute(stmt).scalars().first()
+                if role_obj is None:
+                    role_obj = Role(name=role_name)
+                    self.session.add(role_obj)
+                new_user.roles.append(role_obj)
+
         self.session.add(new_user)
         self.session.flush()
         self.session.refresh(new_user)
-
         logger.info(f"Successfully created User '{username}' with ID: {new_user.id}")
         return new_user
 
@@ -87,14 +105,17 @@ class UserRepository:
 
     @log_repository_action("update_user")
     def update(self, user_id: uuid.UUID, **kwargs: Any) -> User | None:
-        """Updates arbitrary attributes of a User entity dynamically."""
+        """Updates allowed attributes and password hash of a User entity safely."""
         user = self.get_by_id(user_id)
         if user is None:
             logger.warning(f"Failed to update User: ID '{user_id}' not found.")
             return None
 
+        if "password" in kwargs and kwargs["password"] is not None:
+            user.set_password(str(kwargs.pop("password")))
+
         for key, value in kwargs.items():
-            if hasattr(user, key):
+            if key in self._ALLOWED_UPDATE_FIELDS and value is not None:
                 setattr(user, key, value)
 
         self.session.flush()
@@ -137,13 +158,10 @@ class PcrRunRepository:
             raw_operator=raw_operator,
             imported_by_id=imported_by_id,
         )
-
         self.session.add(new_run)
         self.session.flush()
         self.session.refresh(new_run)
-
         logger.info(f"Successfully created PcrRun with ID: {new_run.id}")
-
         return new_run
 
     @log_repository_action("get_pcr_run_by_identifier")
@@ -154,14 +172,11 @@ class PcrRunRepository:
         stmt = select(PcrRun).from_statement(
             tstring(t"SELECT * FROM pcr_runs WHERE run_identifier = {run_identifier}")
         )
-
         result = self.session.execute(stmt).scalars().first()
-
         if result is None:
             logger.warning(f"PcrRun with identifier '{run_identifier}' not found.")
         else:
             logger.info(f"Successfully fetched PcrRun '{run_identifier}'.")
-
         return result
 
 
@@ -194,13 +209,10 @@ class SampleResultRepository:
             cluster_label=cluster_label,
             tech_val_is_positive=tech_val_is_positive,
         )
-
         self.session.add(new_result)
         self.session.flush()
         self.session.refresh(new_result)
-
         logger.info(f"Successfully created SampleResult with ID: {new_result.id}")
-
         return new_result
 
     @log_repository_action("get_sample_result_by_id")
@@ -212,14 +224,11 @@ class SampleResultRepository:
         stmt = select(SampleResult).from_statement(
             tstring(t"SELECT * FROM sample_results WHERE id = {result_id}")
         )
-
         result = self.session.execute(stmt).scalars().first()
-
         if result is None:
             logger.warning(f"SampleResult with ID '{result_id}' not found.")
         else:
             logger.info(f"Successfully fetched SampleResult '{result_id}'.")
-
         return result
 
     @log_repository_action("update_tech_validation")
@@ -251,11 +260,9 @@ class SampleResultRepository:
 
         self.session.flush()
         self.session.refresh(result)
-
         logger.info(
             f"Successfully updated technical validation for SampleResult ID: {result.id}"
         )
-
         return result
 
 
@@ -272,7 +279,7 @@ class TemplateRepository:
     def create(
         self,
         template_identifier: str,
-        multiplex_mapping: dict[str, list[str]],
+        multiplex_mapping: dict[str, Any],
         description: str | None = None,
     ) -> AssayTemplate:
         """
@@ -283,13 +290,10 @@ class TemplateRepository:
             multiplex_mapping=multiplex_mapping,
             description=description,
         )
-
         self.session.add(new_template)
         self.session.flush()
         self.session.refresh(new_template)
-
         logger.info(f"Successfully created AssayTemplate with ID: {new_template.id}")
-
         return new_template
 
     @log_repository_action("get_template_by_identifier")
@@ -303,16 +307,13 @@ class TemplateRepository:
                 t"SELECT * FROM assay_templates WHERE template_identifier = {template_identifier}"
             )
         )
-
         result = self.session.execute(stmt).scalars().first()
-
         if result is None:
             logger.warning(
                 f"AssayTemplate with identifier '{template_identifier}' not found."
             )
         else:
             logger.info(f"Successfully fetched AssayTemplate '{template_identifier}'.")
-
         return result
 
     @log_repository_action("get_template_by_id")
@@ -327,15 +328,11 @@ class TemplateRepository:
     def update(
         self,
         template_id: uuid.UUID,
-        multiplex_mapping: dict[str, list[str]],
+        multiplex_mapping: dict[str, Any],
         description: str | None = None,
     ) -> AssayTemplate | None:
         """Updates a template's mapping and description natively."""
-        stmt = select(AssayTemplate).from_statement(
-            tstring(t"SELECT * FROM assay_templates WHERE id = {template_id}")
-        )
-        template = self.session.execute(stmt).scalars().first()
-
+        template = self.get_by_id(template_id)
         if template is None:
             logger.warning(
                 f"Failed to update AssayTemplate: ID '{template_id}' not found."
@@ -374,11 +371,7 @@ class TemplateRepository:
     @log_repository_action("delete_template")
     def delete(self, template_id: uuid.UUID) -> None:
         """Soft-deactivates an AssayTemplate to prevent breaking existing analytical records."""
-        stmt = select(AssayTemplate).from_statement(
-            tstring(t"SELECT * FROM assay_templates WHERE id = {template_id}")
-        )
-        template = self.session.execute(stmt).scalars().first()
-
+        template = self.get_by_id(template_id)
         if template is not None:
             template.is_active = False
             self.session.flush()
