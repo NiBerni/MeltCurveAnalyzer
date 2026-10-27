@@ -38,9 +38,24 @@ def test_repository_create_user(
     assert user.username == sample_user_data["username"]
     assert user.email == sample_user_data["email"]
     assert user.is_active is True
-    # Verify password hash integration[cite: 2]
+
     assert user.check_password(sample_user_data["password"]) is True
     assert user.password_hash != sample_user_data["password"]
+
+
+def test_repository_create_user_with_roles(
+    user_repo: UserRepository, sample_user_data: dict[str, Any]
+) -> None:
+    """Verifies that creating a user with role names automatically links Role entities."""
+    user = user_repo.create(
+        username=sample_user_data["username"],
+        email=sample_user_data["email"],
+        password=sample_user_data["password"],
+        roles=["Operator", "Senior"],
+    )
+
+    role_names = {r.name for r in user.roles}
+    assert role_names == {"Operator", "Senior"}
 
 
 def test_repository_get_user_by_id(
@@ -76,8 +91,8 @@ def test_repository_update_user(
     user_repo: UserRepository, sample_user_data: dict[str, Any]
 ) -> None:
     user = user_repo.create(**sample_user_data)
-
     updated_email = "updated_tech@lims.local"
+
     updated_user = user_repo.update(
         user_id=user.id, email=updated_email, is_active=True
     )
@@ -88,15 +103,36 @@ def test_repository_update_user(
     assert updated_user.username == sample_user_data["username"]
 
 
+def test_repository_update_user_password_and_ignore_protected_fields(
+    user_repo: UserRepository, sample_user_data: dict[str, Any]
+) -> None:
+    """
+    Verifies that updating 'password' hashes the new password via set_password()
+    and protected attributes like 'id' cannot be overwritten via kwargs.
+    """
+    user = user_repo.create(**sample_user_data)
+    original_id = user.id
+    new_password = "NewSuperSecretPassword99!"
+
+    updated_user = user_repo.update(
+        user_id=original_id,
+        password=new_password,
+        id=uuid.uuid7(),
+    )
+
+    assert updated_user is not None
+    assert updated_user.id == original_id
+    assert updated_user.check_password(new_password) is True
+
+
 def test_repository_delete_user_soft_deactivates(
     user_repo: UserRepository, sample_user_data: dict[str, Any]
 ) -> None:
-    # Delete should only deactivate(is_active = False) a User
     user = user_repo.create(**sample_user_data)
     assert user.is_active is True
 
     user_repo.delete(user.id)
-
     fetched_user = user_repo.get_by_id(user.id)
+
     assert fetched_user is not None
     assert fetched_user.is_active is False

@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -6,7 +8,7 @@ from app.core.analyzer import MeltCurveAnalyzer
 
 @pytest.fixture
 def analyzer() -> MeltCurveAnalyzer:
-    """Returns an instance of the Core MathCurveAnalyzer"""
+    """Returns an instance of the Core MeltCurveAnalyzer."""
     return MeltCurveAnalyzer()
 
 
@@ -18,7 +20,7 @@ def temperatures() -> list[float]:
 
 @pytest.fixture
 def ntc_rfu(temperatures: list[float]) -> list[float]:
-    """Generates a mock No Template Control (NTC) RFU baseline with minor random noise"""
+    """Generates a mock No Template Control (NTC) RFU baseline with minor random noise."""
     return (
         np.linspace(100.0, 90.0, len(temperatures))
         + np.random.normal(0, 1.0, len(temperatures))
@@ -37,7 +39,6 @@ def patient_rfu_valid(temperatures: list[float]) -> list[float]:
     tm_peak = 82.5
     background = 50.0
 
-    # Inverse logistic function simulating a raw PCR melt curve fluorescence drop
     rfu = amplitude / (1.0 + np.exp(steepness * (temps - tm_peak))) + background
     return rfu.tolist()
 
@@ -45,7 +46,7 @@ def patient_rfu_valid(temperatures: list[float]) -> list[float]:
 @pytest.fixture
 def ntc_rfu_contaminated(temperatures: list[float]) -> list[float]:
     """
-    Generates a contaminated NTC with a distinct peak (Tm = 75.0°C).
+    Generates a contaminated NTC with a distinct peak (Tm = 75.0 °C).
     Simulates cross-contamination or primer-dimers in the water control.
     """
     temps = np.array(temperatures)
@@ -54,7 +55,6 @@ def ntc_rfu_contaminated(temperatures: list[float]) -> list[float]:
     tm_peak = 75.0
     background = 50.0
 
-    # Inverse logistic function simulating a contamination melt curve
     rfu = amplitude / (1.0 + np.exp(steepness * (temps - tm_peak))) + background
     return rfu.tolist()
 
@@ -66,12 +66,9 @@ def patient_rfu_overlapping(temperatures: list[float]) -> list[float]:
     The main peak at 82.0 °C and a smaller shoulder peak at 84.5 °C.
     """
     temps = np.array(temperatures)
-
-    # Peak 1 (Main)
     amp1, steep1, tm1 = 1000.0, 1.5, 82.0
     rfu1 = amp1 / (1.0 + np.exp(steep1 * (temps - tm1)))
 
-    # Peak 2 (Shoulder)
     amp2, steep2, tm2 = 400.0, 1.8, 84.5
     rfu2 = amp2 / (1.0 + np.exp(steep2 * (temps - tm2)))
 
@@ -88,6 +85,7 @@ def test_analyzer_initialization_defaults(analyzer: MeltCurveAnalyzer) -> None:
     assert analyzer.als_lam == 1e4
     assert analyzer.als_p == 0.05
     assert analyzer.als_niter == 10
+    assert analyzer.adaptive is False
 
 
 def test_analyzer_initialization_custom_values() -> None:
@@ -100,8 +98,8 @@ def test_analyzer_initialization_custom_values() -> None:
         als_lam=1e5,
         als_p=0.01,
         als_niter=20,
+        adaptive=True,
     )
-
     assert custom_analyzer.relative_height_threshold == 0.25
     assert custom_analyzer.prominence_factor == 6.0
     assert custom_analyzer.savgol_window == 11
@@ -109,6 +107,26 @@ def test_analyzer_initialization_custom_values() -> None:
     assert custom_analyzer.als_lam == 1e5
     assert custom_analyzer.als_p == 0.01
     assert custom_analyzer.als_niter == 20
+    assert custom_analyzer.adaptive is True
+
+
+def test_analyzer_from_assay_config_factory() -> None:
+    """Verifies that from_assay_config constructs an adaptive analyzer with optional overrides."""
+    config: dict[str, Any] = {
+        "relative_height_threshold": 0.1,
+        "prominence_factor": 2.5,
+        "savgol_window": 9,
+        "adaptive": True,
+    }
+    configured = MeltCurveAnalyzer.from_assay_config(config)
+    assert configured.relative_height_threshold == 0.1
+    assert configured.prominence_factor == 2.5
+    assert configured.savgol_window == 9
+    assert configured.adaptive is True
+
+    default_adaptive = MeltCurveAnalyzer.from_assay_config(None)
+    assert default_adaptive.adaptive is True
+    assert default_adaptive.savgol_window == 15
 
 
 @pytest.mark.parametrize(
@@ -116,15 +134,16 @@ def test_analyzer_initialization_custom_values() -> None:
     [
         ({"relative_height_threshold": "high"}, TypeError),
         ({"relative_height_threshold": -0.1}, ValueError),
-        ({"savgol_window": 14}, ValueError),  # SavGol window must typically be odd
+        ({"savgol_window": 14}, ValueError),
         ({"savgol_window": "fifteen"}, TypeError),
         ({"savgol_polyorder": "three"}, TypeError),
+        ({"savgol_polyorder": 0}, ValueError),
         ({"als_niter": -5}, ValueError),
         ({"als_niter": 5.5}, TypeError),
     ],
 )
 def test_analyzer_initialization_type_enforcement(
-    invalid_kwargs: dict[str, str | float | int], expected_exception: type[Exception]
+    invalid_kwargs: dict[str, Any], expected_exception: type[Exception]
 ) -> None:
     """Validates that initialization enforces correct types and boundary constraints."""
     with pytest.raises(expected_exception):
@@ -137,9 +156,7 @@ def test_analyzer_complete_pipeline_success(
     patient_rfu_valid: list[float],
     ntc_rfu: list[float],
 ) -> None:
-    """Validates successful end-to-end execution strictly sequentially isolated.
-    (Blanking -> ALS -> SavGol -> Gauss-Fit).
-    """
+    """Validates successful end-to-end execution sequentially isolated."""
     result = analyzer.analyze(
         temperatures=temperatures, patient_rfu=patient_rfu_valid, ntc_rfu=ntc_rfu
     )
@@ -163,7 +180,7 @@ def test_analyzer_invalid_ntc_triggers_escalation(
     analyzer: MeltCurveAnalyzer,
     temperatures: list[float],
     patient_rfu_valid: list[float],
-    invalid_ntc: list[float],
+    invalid_ntc: list[float] | None,
 ) -> None:
     """
     Verifies that if NTC is missing or invalid, blanking is skipped, ALS handles the baseline directly,
@@ -186,13 +203,14 @@ def test_analyzer_contaminated_ntc_triggers_escalation(
 ) -> None:
     """
     Verifies that an NTC with a detectable peak (contamination) is actively rejected for blanking.
-    The system must fall back to ALS baseline correction and trigger senior validation
+    The system must fall back to ALS baseline correction and trigger senior validation.
     """
     result = analyzer.analyze(
         temperatures=temperatures,
         patient_rfu=patient_rfu_valid,
         ntc_rfu=ntc_rfu_contaminated,
     )
+
     assert result["requires_senior_validation"] is True
     peaks = result["tm_peaks"]
     assert len(peaks) >= 1
@@ -217,7 +235,6 @@ def test_analyzer_sav_gol_derivate_shape(
 
     max_peak_value = max(processed)
     min_value = min(processed)
-
     assert max_peak_value > 0.0
     assert max_peak_value > abs(min_value)
 
@@ -229,7 +246,7 @@ def test_analyzer_gaussian_peak_detection(
 ) -> None:
     """
     Tests the correct extraction of known synthetic Tm peaks via Gaussian Deconvolution.
-    Verifies a synthetic peak at 82.5°C is accurately detected.
+    Verifies a synthetic peak at 82.5 °C is accurately detected.
     """
     result = analyzer.analyze(
         temperatures=temperatures, patient_rfu=patient_rfu_valid, ntc_rfu=None
@@ -237,9 +254,45 @@ def test_analyzer_gaussian_peak_detection(
 
     peaks = result["tm_peaks"]
     assert len(peaks) >= 1
-
     detected_expected_peak = any(82.0 <= peak <= 83.0 for peak in peaks)
     assert detected_expected_peak is True
+
+
+def test_analyzer_adaptive_mode_detects_low_rfu_signal(
+    temperatures: list[float],
+) -> None:
+    """
+    Verifies that adaptive=True dynamically scales the prominence threshold via MAD/SNR,
+    detecting valid melt peaks even in normalized low-RFU cycler exports (e.g., amplitude = 3.0 RFU)
+    where a static prominence_factor=5.0 would fail.
+    """
+    temps = np.array(temperatures)
+    low_amplitude_rfu = (3.0 / (1.0 + np.exp(1.5 * (temps - 80.0))) + 1.0).tolist()
+
+    adaptive_analyzer = MeltCurveAnalyzer(adaptive=True)
+    result = adaptive_analyzer.analyze(
+        temperatures=temperatures, patient_rfu=low_amplitude_rfu, ntc_rfu=None
+    )
+
+    peaks = result["tm_peaks"]
+    assert len(peaks) == 1
+    assert 79.7 <= peaks[0] <= 80.3
+
+
+def test_analyzer_short_array_adapts_window_safely(
+    analyzer: MeltCurveAnalyzer,
+) -> None:
+    """
+    Verifies that input arrays shorter than savgol_window (15) dynamically shrink
+    the effective Savitzky-Golay window instead of crashing.
+    """
+    short_temps = [60.0, 61.0, 62.0, 63.0, 64.0]
+    short_rfu = [100.0, 95.0, 70.0, 45.0, 40.0]
+
+    result = analyzer.analyze(
+        temperatures=short_temps, patient_rfu=short_rfu, ntc_rfu=None
+    )
+    assert len(result["processed_curve"]) == 5
 
 
 @pytest.mark.parametrize("missing_kwargs", [{"temperatures": []}, {"patient_rfu": []}])
@@ -250,7 +303,7 @@ def test_analyzer_missing_arrays_raises_error(
     missing_kwargs: dict[str, list[float]],
 ) -> None:
     """Validates that empty input arrays raise the appropriate ValueErrors during processing."""
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "temperatures": temperatures,
         "patient_rfu": patient_rfu_valid,
         "ntc_rfu": None,
@@ -259,6 +312,15 @@ def test_analyzer_missing_arrays_raises_error(
 
     with pytest.raises(ValueError):
         analyzer.analyze(**kwargs)
+
+
+def test_analyzer_length_mismatch_raises_error(
+    analyzer: MeltCurveAnalyzer,
+    temperatures: list[float],
+) -> None:
+    """Validates that mismatched temperatures and patient_rfu array lengths raise a ValueError."""
+    with pytest.raises(ValueError, match="Length mismatch"):
+        analyzer.analyze(temperatures=temperatures, patient_rfu=[100.0, 90.0])
 
 
 def test_analyzer_deconvolutes_overlapping_peaks(
@@ -277,7 +339,6 @@ def test_analyzer_deconvolutes_overlapping_peaks(
     peaks = result["tm_peaks"]
 
     assert len(peaks) == 2, f"Expected 2 peaks, but found {len(peaks)}"
-
     assert any(81.8 <= peak <= 82.2 for peak in peaks), (
         "Main peak (82.0) not found or inaccurate"
     )

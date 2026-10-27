@@ -10,17 +10,17 @@ from app.ingestion.parser import CyclerDataParser
 @pytest.fixture
 def valid_csv_content() -> str:
     return """[Header]
-	Run_ID,RUN_20260723_001
-	Date,2026-07-23 11:30:00
-	Device_ID,LightCycler_480_02
-	Operator,Operator
-	
-	[MeltCurveData]
-	Well,Channel,Sample_ID,Target,Temperature,Fluorescence,Derivative
-	A01,FAM,Sample_001,Gene_A,60.0,1200.5,5.2
-	A01,FAM,Sample_001,Gene_A,60.5,1195.1,8.4
-	A02,HEX,Sample_002,,60.0,980.2,3.1
-	"""
+Run_ID,RUN_20260723_001
+Date,2026-07-23 11:30:00
+Device_ID,LightCycler_480_02
+Operator,Operator
+
+[MeltCurveData]
+Well,Channel,Sample_ID,Target,Temperature,Fluorescence,Derivative
+A01,FAM,Sample_001,Gene_A,60.0,1200.5,5.2
+A01,FAM,Sample_001,Gene_A,60.5,1195.1,8.4
+A02,HEX,Sample_002,,60.0,980.2,3.1
+"""
 
 
 @pytest.fixture
@@ -73,13 +73,28 @@ def test_parse_valid_block_csv_success(valid_csv_content: str) -> None:
     assert isinstance(parser.metadata, dict)
     assert parser.metadata.get("Run_ID") == "RUN_20260723_001"
     assert parser.metadata.get("raw_operator") == "Operator"
-
     assert len(parser.data) == 3
 
     first_row = cast(dict[str, Any], parser.data.iloc[0].to_dict())
     assert first_row.get("Well") == "A01"
     assert first_row.get("Channel") == "FAM"
     assert float(first_row.get("Temperature") or 0.0) == 60.0
+
+
+def test_parse_csv_mvp_returns_normalized_records(valid_csv_content: str) -> None:
+    """Verifies that parse_csv_mvp groups and sorts CSV rows into channel-isolated dictionaries."""
+    parser = CyclerDataParser()
+    records = parser.parse_csv_mvp(valid_csv_content)
+
+    assert len(records) == 2
+    fam_record = records[0]
+    assert fam_record["run_identifier"] == "RUN_20260723_001"
+    assert fam_record["device_id"] == "LightCycler_480_02"
+    assert fam_record["raw_operator"] == "Operator"
+    assert fam_record["well_position"] == "A01"
+    assert fam_record["target_channel"] == "FAM"
+    assert fam_record["temperatures"] == [60.0, 60.5]
+    assert fam_record["raw_fluorescence"] == [1200.5, 1195.1]
 
 
 @pytest.mark.parametrize(
@@ -106,10 +121,10 @@ A01,FAM,Sample_001,Gene_A,60.0,1200.5,5.2
 def test_parse_missing_optional_target_column_success() -> None:
     csv_data: str = """[Header]
     Run_ID,RUND_20260723_003
-    Date,20226-07-23 12:30:00
+    Date,2026-07-23 12:30:00
     Device_ID,LC_480
     Operator,JaneDoe
-    
+
     [MeltCurveData]
     Well,Channel,Sample_ID,Temperature,Fluorescence,Derivative
     A01,FAM,Sample_001,60.0,1200.5,5.2
@@ -119,7 +134,6 @@ def test_parse_missing_optional_target_column_success() -> None:
     parser: CyclerDataParser = CyclerDataParser(stream)
 
     assert len(parser.data) == 2
-
     first_row = cast(dict[str, Any], parser.data.iloc[0].to_dict())
     assert (
         "Target" not in first_row
@@ -132,7 +146,7 @@ def test_parse_missing_header_section_raises_error() -> None:
     csv_data: str = """[MeltCurveData
     Well,Channel,Sample_ID,Temperature,Fluorescence,Derivative
     A01,Sample_001,Gene_A,60.0,1200.5,5.2
-	"""
+"""
     stream: io.StringIO = io.StringIO(csv_data)
     with pytest.raises(ValueError):
         CyclerDataParser(stream)
@@ -142,31 +156,27 @@ def test_parse_missing_header_section_raises_error() -> None:
     "missing_column_data",
     [
         """[Header]
-				Run_ID,RUN_01
-				Operator,User
-				
-				[MeltCurveData]
-				Well,Sample_ID,Target,Temperature,Fluorescence,Derivative
-				A01,Sample_01,Gene_A,60.0,1200.5,5.2""",
+		Run_ID,RUN_01
+		Operator,User
+		[MeltCurveData]
+		Well,Sample_ID,Target,Temperature,Fluorescence,Derivative
+		A01,Sample_01,Gene_A,60.0,1200.5,5.2""",
         """[Header]
-				Run_ID,RUN_01
-				Operator,User
-				
-				[MeltCurveData]
-				Well,Channel,Sample_ID,Target,Fluorescence,Derivative
-				A01,FAM,Sample_01,Gene_A,1200.5,5.2""",
+		Run_ID,RUN_01
+		Operator,User
+		[MeltCurveData]
+		Well,Channel,Sample_ID,Target,Fluorescence,Derivative
+		A01,FAM,Sample_01,Gene_A,1200.5,5.2""",
         """[Header]
-				Run_ID,RUN_01
-				Operator,User
-				
-				[MeltCurveData]
-				Well,Channel,Sample_ID,Target,Temperature,Derivative
-				A01,FAM,Sample_01,Gene_A,60.0,5.2""",
+		Run_ID,RUN_01
+		Operator,User
+		[MeltCurveData]
+		Well,Channel,Sample_ID,Target,Temperature,Derivative
+		A01,FAM,Sample_01,Gene_A,60.0,5.2""",
     ],
 )
 def test_parse_missing_mandatory_columns_raises_error(missing_column_data: str) -> None:
     stream: io.StringIO = io.StringIO(missing_column_data)
-
     with pytest.raises(ValueError):
         CyclerDataParser(stream)
 
@@ -177,20 +187,18 @@ def test_parse_corrupted_numeric_value_raises_error() -> None:
     Date,2026-07-23 14:00:00
     Device_ID,LC_480
     Operator,JohnDoe
-    
+
     [MeltCurveData]
     Well,Channel,Sample_ID,Target,Temperature,Fluorescence,Derivative
     A01,FAM,Sample_001,Gene_A,NOT_A_NUMBER,1200.5,5.2
     """
     stream: io.StringIO = io.StringIO(csv_data)
-
     with pytest.raises(ValueError):
         CyclerDataParser(stream)
 
 
 def test_parse_empty_file_raises_error() -> None:
     stream: io.StringIO = io.StringIO("")
-
     with pytest.raises(ValueError):
         CyclerDataParser(stream)
 
@@ -206,10 +214,50 @@ def test_parse_roche_xml_success(valid_roche_xml_snippet: str) -> None:
     assert sample_data["run_identifier"] == "310726_Derma"
     assert sample_data["well_position"] == "Sample_1"
     assert sample_data["target_channel"] == "FAM"
-
-    # Asserting that ONLY Acq >= 46 are included in the results
     assert sample_data["temperatures"] == [44.95, 45.8, 46.86]
     assert sample_data["raw_fluorescence"] == [3.474, 3.492, 3.517]
+
+
+def test_parse_roche_xml_preserves_canonical_channel_casing_and_monotonic_ramp() -> (
+    None
+):
+    """
+    Verifies that HTCChannel mappings normalize '540-610' / 'cy5' to 'TexasRed' / 'Cy5'
+    and filter out non-increasing temperature points during the melt ramp.
+    """
+    xml_snippet = """<?xml version="1.0" encoding="utf-8"?>
+<Experiment>
+    <prop name="name">Run_Multiplex</prop>
+    <obj class="HTCChannel"><prop name="name">540-610</prop></obj>
+    <obj class="HTCChannel"><prop name="name">cy5</prop></obj>
+    <Acquisitions>
+        <Sample Number="1" Name="PC_Well">
+            <Acq Number="46">
+                <Chan Number="0"><prop name="Temp">60.0</prop><prop name="Fluor">10.0</prop></Chan>
+                <Chan Number="1"><prop name="Temp">60.0</prop><prop name="Fluor">20.0</prop></Chan>
+            </Acq>
+            <Acq Number="47">
+                <Chan Number="0"><prop name="Temp">60.0</prop><prop name="Fluor">9.9</prop></Chan>
+                <Chan Number="1"><prop name="Temp">61.0</prop><prop name="Fluor">19.5</prop></Chan>
+            </Acq>
+            <Acq Number="48">
+                <Chan Number="0"><prop name="Temp">61.5</prop><prop name="Fluor">8.5</prop></Chan>
+                <Chan Number="1"><prop name="Temp">62.0</prop><prop name="Fluor">18.0</prop></Chan>
+            </Acq>
+        </Sample>
+    </Acquisitions>
+</Experiment>
+"""
+    parser = CyclerDataParser()
+    result = parser.parse_roche_xml_mvp(xml_snippet)
+
+    assert len(result) == 2
+    assert result[0]["well_position"] == "PC_Well"
+    assert result[0]["target_channel"] == "TexasRed"
+    # Duplicate 60.0 °C point in Acq 47 was filtered out
+    assert result[0]["temperatures"] == [60.0, 61.5]
+    assert result[1]["target_channel"] == "Cy5"
+    assert result[1]["temperatures"] == [60.0, 61.0, 62.0]
 
 
 def test_parse_roche_xml_missing_acquisitions() -> None:
@@ -219,7 +267,6 @@ def test_parse_roche_xml_missing_acquisitions() -> None:
 </Experiment>
 """
     parser = CyclerDataParser()
-
     with pytest.raises(ValueError):
         parser.parse_roche_xml_mvp(invalid_xml)
 
@@ -248,6 +295,5 @@ def test_parse_roche_xml_no_melt_data() -> None:
 """
     parser = CyclerDataParser()
     result: list[dict[str, Any]] = parser.parse_roche_xml_mvp(no_melt_xml)
-
     assert isinstance(result, list)
     assert len(result) == 0
