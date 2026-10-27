@@ -212,6 +212,8 @@ docker compose logs -f api
 Make sure the PostgreSQL container is running (`docker compose up -d db`), then execute:
 
 ```bash
+cp .env.example .env
+docker compose up -d db
 uv run pytest -v
 ```
 

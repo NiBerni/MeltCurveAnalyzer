@@ -5,6 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     UV_SYSTEM_PYTHON=1
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /app
 
@@ -17,9 +18,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock* ./
-RUN uv pip install --no-cache -r pyproject.toml
+RUN uv sync --frozen --no-dev --no-install-project
 
 COPY . .
+
+RUN uv sync --frozen --no-dev
 
 RUN useradd --create-home --shell /bin/bash lims_user \
     && chown -R lims_user:lims_user /app

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies (including dev group)
+        run: uv sync --all-extras --dev
+
+      - name: Run Ruff Linter
+        run: uv run ruff check .
+
+      - name: Run Pytest Unit & Integration Tests
+        run: uv run pytest -v
+        env:
+          DATABASE_URL: "sqlite:///:memory:"
+          JWT_SECRET_KEY: "ci-test-secret-key"
