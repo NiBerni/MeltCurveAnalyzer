@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: meltcurve_postgres18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pcr_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-supersecretpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-pcr_analyzer}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres18_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-pcr_admin} -d $${POSTGRES_DB:-pcr_analyzer}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - lims_network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meltcurve_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pcr_admin}:${POSTGRES_PASSWORD:-supersecretpassword}@db:5432/${POSTGRES_DB:-pcr_analyzer}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-super-secure-lokaler-dev-key-change-in-prod}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/auth/me | grep -q '401'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - lims_network
+
+volumes:
+  postgres18_data:
+    name: meltcurve_postgres18_data
+
+networks:
+  lims_network:
+    driver: bridge

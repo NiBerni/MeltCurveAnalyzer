@@ -1,0 +1,755 @@
+{
+  "info": {
+    "_postman_id": "b8f9c2d1-4a7e-4c11-9d3a-7e6f5a4b3c2d",
+    "name": "AI-Driven PCR Melt Curve Analyzer (Beta-Publish-Ready)",
+    "description": "End-to-End REST API Test Suite for the AI-Driven PCR Melt Curve Analyzer LIMS.\n\nFeatures:\n- Automatic JWT token extraction into `{{jwt_token}}` upon login.\n- Automatic UUID chaining (`{{created_user_id}}`, `{{template_uuid}}`, `{{custom_template_id}}`, `{{run_id}}`, `{{result_id}}`).\n- Full RBAC coverage (`Admin`, `Senior`, `Validator`, `Operator`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "created_user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "operator_user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "template_identifier",
+      "value": "COMPREHENSIVE_MULTIPLEX_V1",
+      "type": "string"
+    },
+    {
+      "key": "template_uuid",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "custom_template_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "run_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "result_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication & Identity",
+      "item": [
+        {
+          "name": "1.1 Login as Admin (admin_master) [Auto-Saves JWT]",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Response contains access_token', function () {",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "});",
+                  "",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('jwt_token', jsonData.access_token);",
+                  "    pm.environment.set('jwt_token', jsonData.access_token);",
+                  "    console.log('Successfully stored Admin JWT into {{jwt_token}}');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin_master\",\n  \"password\": \"AdminMasterPassword2026!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Authenticates the seeded `admin_master` account and automatically stores the returned `access_token` in `{{jwt_token}}`."
+          }
+        },
+        {
+          "name": "1.2 Login as Operator (lab_operator) [Auto-Saves JWT]",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('jwt_token', jsonData.access_token);",
+                  "    pm.environment.set('jwt_token', jsonData.access_token);",
+                  "    console.log('Switched active {{jwt_token}} to Operator role.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"lab_operator\",\n  \"password\": \"OperatorPass2026!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Logs in as standard `Operator` to test RBAC restrictions on administrative or validation endpoints."
+          }
+        },
+        {
+          "name": "1.3 Inspect Current Token Claims (GET /api/auth/me)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Returns roles array and Research Use Only header', function () {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.roles).to.be.an('array');",
+                  "    pm.response.to.have.header('X-Compliance-Notice');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. User Management (IAM & RBAC)",
+      "item": [
+        {
+          "name": "2.1 List All Active Users (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.2 Create User WITH Senior & Validator Rights",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "if (data.id) {",
+                  "    pm.collectionVariables.set('created_user_id', data.id);",
+                  "    pm.environment.set('created_user_id', data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"dr_mueller_senior\",\n  \"email\": \"mueller.senior@lims.local\",\n  \"password\": \"SeniorSecurePass2026!\",\n  \"roles\": [\"Senior\", \"Validator\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.3 Create User WITHOUT Senior Rights (Operator Only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "if (data.id) {",
+                  "    pm.collectionVariables.set('operator_user_id', data.id);",
+                  "    pm.environment.set('operator_user_id', data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"ta_routine_01\",\n  \"email\": \"ta_routine_01@lims.local\",\n  \"password\": \"RoutineOperator2026!\",\n  \"roles\": [\"Operator\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.4 Update User Email & Password (PUT /api/users/:id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dr.mueller.updated@lims.local\",\n  \"password\": \"UpdatedSeniorPass2026!\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{created_user_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{created_user_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.5 Soft-Delete Operator User (DELETE /api/users/:id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{operator_user_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{operator_user_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Assay Template Management",
+      "item": [
+        {
+          "name": "3.1 List Active Templates (Captures Seeded 6-Channel UUID)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const templates = pm.response.json();",
+                  "const seeded = templates.find(t => t.identifier === 'COMPREHENSIVE_MULTIPLEX_V1');",
+                  "if (seeded) {",
+                  "    pm.collectionVariables.set('template_uuid', seeded.id);",
+                  "    pm.environment.set('template_uuid', seeded.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/templates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "templates"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.2 Get Seeded 6-Channel / 12-Target Template Details",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Contains 6 channels in multiplex_mapping', function () {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(Object.keys(data.multiplex_mapping).length).to.eql(6);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/templates/{{template_uuid}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "templates",
+                "{{template_uuid}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.3 Create Custom Assay Template (Senior/Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "if (data.id) {",
+                  "    pm.collectionVariables.set('custom_template_id', data.id);",
+                  "    pm.environment.set('custom_template_id', data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_identifier\": \"DERMA_FUNGAL_PANEL_V1\",\n  \"multiplex_mapping\": {\n    \"FAM\": {\n      \"targets\": [\"T_rubrum\", \"T_interdigitale\"],\n      \"expected_tms\": [79.2, 83.8]\n    },\n    \"HEX\": {\n      \"targets\": [\"C_albicans\", \"IC_Control\"],\n      \"expected_tms\": [75.4, 81.0]\n    }\n  },\n  \"description\": \"Dermatophyte multiplex melt curve panel.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/templates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "templates"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.4 Update Template Mapping & Description",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"multiplex_mapping\": {\n    \"FAM\": {\n      \"targets\": [\"T_rubrum\", \"T_interdigitale\"],\n      \"expected_tms\": [79.4, 84.0]\n    },\n    \"HEX\": {\n      \"targets\": [\"C_albicans\", \"IC_Control\"],\n      \"expected_tms\": [75.4, 81.0]\n    }\n  },\n  \"description\": \"Updated Tm calibration for Lot #2026-10.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/templates/{{custom_template_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "templates",
+                "{{custom_template_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.5 Toggle Template Active Status (Deactivate)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/templates/{{custom_template_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "templates",
+                "{{custom_template_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.6 Soft-Delete Custom Template",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/templates/{{custom_template_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "templates",
+                "{{custom_template_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Run Management & Cycler Data Ingestion",
+      "item": [
+        {
+          "name": "4.1 Upload Cycler Run File (Requires GDPR Consent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "if (data.run_id) {",
+                  "    pm.collectionVariables.set('run_id', data.run_id);",
+                  "    pm.environment.set('run_id', data.run_id);",
+                  "}",
+                  "if (data.results && data.results.length > 0) {",
+                  "    const escalated = data.results.find(r => r.requires_senior_validation === true);",
+                  "    const targetResult = escalated ? escalated : data.results[0];",
+                  "    pm.collectionVariables.set('result_id', targetResult.id);",
+                  "    pm.environment.set('result_id', targetResult.id);",
+                  "    console.log('Captured result_id for technical validation:', targetResult.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "consent_gdpr_phi",
+                  "value": "true",
+                  "description": "Mandatory GDPR/PHI anonymization confirmation gate",
+                  "type": "text"
+                },
+                {
+                  "key": "template_id",
+                  "value": "{{template_identifier}}",
+                  "description": "Uses seeded COMPREHENSIVE_MULTIPLEX_V1 template",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "description": "Select data/demo_6channel_run.csv or a Roche XML export",
+                  "type": "file",
+                  "src": "data/demo_6channel_run.csv"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "upload"
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.2 List All Ingested PCR Runs (GET /api/runs)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.3 Get Full Run Details, Curves & ML Clusters (GET /api/runs/:id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{run_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{run_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Technical Validation (Escalation Workflow)",
+      "item": [
+        {
+          "name": "5.1 Validate / Override Escalated Result (Senior/Validator/Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Result status is validated', function () {",
+                  "    const data = pm.response.json();",
+                  "    pm.expect(data.status).to.eql('validated');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_positive\": true,\n  \"override_reason\": \"Technical validation sign-off: Tm peak verified against positive control cluster.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/results/{{result_id}}/validate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "results",
+                "{{result_id}}",
+                "validate"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
