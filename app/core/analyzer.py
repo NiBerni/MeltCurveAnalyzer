@@ -29,6 +29,7 @@ class MeltCurveAnalyzer:
     """
     Orchestrates the signal processing pipeline strictly sequentially for a single, isolated channel.
     Executes Blanking -> Savitzky-Golay Derivative (-dRFU/dT) -> ALS Baseline -> Gaussian Deconvolution.
+    Supports both fixed threshold configurations and dynamic SNR/MAD-driven threshold adaptation.
     """
 
     def __init__(
@@ -40,6 +41,7 @@ class MeltCurveAnalyzer:
         als_lam: float = 1e4,
         als_p: float = 0.05,
         als_niter: int = 10,
+        adaptive: bool = False,
     ) -> None:
         self.relative_height_threshold = relative_height_threshold
         self.prominence_factor = prominence_factor
@@ -48,6 +50,27 @@ class MeltCurveAnalyzer:
         self.als_lam = als_lam
         self.als_p = als_p
         self.als_niter = als_niter
+        self.adaptive = bool(adaptive)
+
+    @classmethod
+    def from_assay_config(
+        cls, config: dict[str, Any] | None = None, adaptive: bool = True
+    ) -> "MeltCurveAnalyzer":
+        """
+        Factory method to dynamically construct a MeltCurveAnalyzer from an AssayTemplate's
+        optional 'analyzer_config' dictionary, falling back to adaptive SNR-based processing.
+        """
+        cfg = config or {}
+        return cls(
+            relative_height_threshold=float(cfg.get("relative_height_threshold", 0.15)),
+            prominence_factor=float(cfg.get("prominence_factor", 5.0)),
+            savgol_window=int(cfg.get("savgol_window", 15)),
+            savgol_polyorder=int(cfg.get("savgol_polyorder", 3)),
+            als_lam=float(cfg.get("als_lam", 1e4)),
+            als_p=float(cfg.get("als_p", 0.05)),
+            als_niter=int(cfg.get("als_niter", 10)),
+            adaptive=bool(cfg.get("adaptive", adaptive)),
+        )
 
     @property
     def relative_height_threshold(self) -> float:
@@ -141,6 +164,63 @@ class MeltCurveAnalyzer:
             y += amp * np.exp(-((x - mu) ** 2) / (2 * sigma**2))
         return y
 
+    @staticmethod
+    def _estimate_robust_noise(curve: np.ndarray) -> tuple[float, float]:
+        """
+        Estimates the baseline median and robust standard deviation (via Median Absolute Deviation)
+        of a derivative melt curve so prominence thresholds adapt to low- and high-RFU cyclers.
+        """
+        median_val = float(np.median(curve))
+        mad_val = float(np.median(np.abs(curve - median_val)))
+        robust_sigma = 1.4826 * mad_val
+        return median_val, robust_sigma
+
+    def _resolve_savgol_params(self, n_points: int, delta_t: float) -> tuple[int, int]:
+        """
+        Computes the effective Savitzky-Golay window and polynomial order.
+        In adaptive mode, targets a physical smoothing window of ~1.5 °C scaled by delta_t.
+        """
+        if self.adaptive and delta_t > 0:
+            target_points = max(5, int(round(1.5 / delta_t)))
+            if target_points % 2 == 0:
+                target_points += 1
+            desired_window = min(self.savgol_window, target_points)
+        else:
+            desired_window = self.savgol_window
+
+        max_odd = n_points if n_points % 2 == 1 else n_points - 1
+        eff_window = min(desired_window, max_odd)
+        eff_poly = min(self.savgol_polyorder, max(1, eff_window - 1))
+        return eff_window, eff_poly
+
+    def _resolve_peak_thresholds(
+        self, processed_curve: np.ndarray
+    ) -> tuple[float, float]:
+        """
+        Computes effective (height_threshold, prominence_threshold).
+        In adaptive mode, scales prominence dynamically from the curve's SNR/MAD noise floor
+        so both normalized low-RFU exports and high-RFU raw curves are handled without magic numbers.
+        """
+        max_height = float(np.max(processed_curve))
+        if max_height <= 0:
+            return 0.0, self.prominence_factor
+
+        if not self.adaptive:
+            return max_height * self.relative_height_threshold, self.prominence_factor
+
+        median_val, robust_sigma = self._estimate_robust_noise(processed_curve)
+        snr_prominence = max(
+            median_val + 4.5 * robust_sigma,
+            max_height * 0.05,
+            1e-3,
+        )
+        eff_prominence = min(self.prominence_factor, snr_prominence)
+        eff_height = max(
+            max_height * self.relative_height_threshold,
+            median_val + 3.0 * robust_sigma,
+        )
+        return eff_height, eff_prominence
+
     @log_performance
     def _als_baseline(self, y: np.ndarray) -> np.ndarray:
         """
@@ -192,12 +272,7 @@ class MeltCurveAnalyzer:
         raw_delta_t = float(np.median(diffs)) if len(diffs) > 0 else 0.1
         delta_t = raw_delta_t if raw_delta_t > 0 else 0.1
 
-        # Adapt Savitzky-Golay window safely for short arrays
-        n_points = len(temps_arr)
-        eff_window = min(
-            self.savgol_window, n_points if n_points % 2 == 1 else n_points - 1
-        )
-        eff_poly = min(self.savgol_polyorder, max(1, eff_window - 1))
+        eff_window, eff_poly = self._resolve_savgol_params(len(temps_arr), delta_t)
 
         # 1. NTC Validation & Blanking
         if not ntc_rfu or len(ntc_rfu) != len(patient_rfu):
@@ -219,9 +294,7 @@ class MeltCurveAnalyzer:
                 ntc_deriv = -np.gradient(ntc_arr, delta_t)
 
             # Intrinsic NTC noise threshold (independent of patient signal amplitude)
-            median_deriv = float(np.median(ntc_deriv))
-            mad_deriv = float(np.median(np.abs(ntc_deriv - median_deriv)))
-            robust_sigma = 1.4826 * mad_deriv
+            median_deriv, robust_sigma = self._estimate_robust_noise(ntc_deriv)
             ntc_noise_floor = max(
                 median_deriv + 6.0 * robust_sigma, self.prominence_factor * 5.0
             )
@@ -253,16 +326,12 @@ class MeltCurveAnalyzer:
         processed_curve = raw_deriv - baseline
 
         # 4. Peak Detection & Gaussian Deconvolution
-        max_height = float(np.max(processed_curve))
-        height_thresh = (
-            max_height * self.relative_height_threshold if max_height > 0 else 0.0
-        )
+        height_thresh, eff_prominence = self._resolve_peak_thresholds(processed_curve)
 
-        # Initial approximate peaks
         initial_peaks, _ = find_peaks(
             processed_curve,
             height=height_thresh,
-            prominence=self.prominence_factor,
+            prominence=eff_prominence,
         )
 
         tm_peaks: list[float] = []

@@ -65,6 +65,8 @@ class UserCreatePayload:
 class UserUpdatePayload:
     is_active: bool | None = None
     password: str | None = None
+    username: str | None = None
+    email: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "UserUpdatePayload":
@@ -73,6 +75,18 @@ class UserUpdatePayload:
 
         is_active = data.get("is_active")
         password = data.get("password")
+        username = data.get("username")
+        email = data.get("email")
+
+        if (
+            is_active is None
+            and password is None
+            and username is None
+            and email is None
+        ):
+            raise ValueError(
+                "At least one updatable field ('is_active', 'password', 'username', 'email') must be provided."
+            )
 
         if is_active is not None and not isinstance(is_active, bool):
             raise ValueError("'is_active' must be a boolean.")
@@ -80,14 +94,25 @@ class UserUpdatePayload:
             not isinstance(password, str) or len(password) < 8
         ):
             raise ValueError("'password' must be at least 8 characters long.")
+        if username is not None and (
+            not isinstance(username, str) or not username.strip()
+        ):
+            raise ValueError("'username' must be a non-empty string.")
+        if email is not None and (not isinstance(email, str) or "@" not in email):
+            raise ValueError("'email' must be a valid email string.")
 
-        return cls(is_active=is_active, password=password)
+        return cls(
+            is_active=is_active,
+            password=password,
+            username=username.strip() if isinstance(username, str) else None,
+            email=email.strip() if isinstance(email, str) else None,
+        )
 
 
 @dataclass
 class TemplateCreatePayload:
     template_identifier: str
-    multiplex_mapping: dict[str, list[str]]
+    multiplex_mapping: dict[str, Any]
     description: str | None = None
 
     @classmethod
@@ -113,7 +138,9 @@ class TemplateCreatePayload:
 
 @dataclass
 class TemplateUpdatePayload:
-    is_active: bool
+    is_active: bool | None = None
+    multiplex_mapping: dict[str, Any] | None = None
+    description: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "TemplateUpdatePayload":
@@ -121,7 +148,25 @@ class TemplateUpdatePayload:
             raise ValueError("Empty request body")
 
         is_active = data.get("is_active")
-        if not isinstance(is_active, bool):
-            raise ValueError("'is_active' must be a boolean.")
+        multiplex_mapping = data.get("multiplex_mapping")
+        description = data.get("description")
 
-        return cls(is_active=is_active)
+        if is_active is None and multiplex_mapping is None and description is None:
+            raise ValueError(
+                "At least one field ('is_active', 'multiplex_mapping', 'description') must be provided."
+            )
+
+        if is_active is not None and not isinstance(is_active, bool):
+            raise ValueError("'is_active' must be a boolean.")
+        if multiplex_mapping is not None and (
+            not isinstance(multiplex_mapping, dict) or not multiplex_mapping
+        ):
+            raise ValueError("'multiplex_mapping' must be a non-empty dictionary.")
+        if description is not None and not isinstance(description, str):
+            raise ValueError("'description' must be a string.")
+
+        return cls(
+            is_active=is_active,
+            multiplex_mapping=multiplex_mapping,
+            description=description.strip() if isinstance(description, str) else None,
+        )

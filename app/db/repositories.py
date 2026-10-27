@@ -1,6 +1,4 @@
-"""
-app/db/repositories.py
-"""
+""" """
 
 import datetime
 import functools
@@ -164,6 +162,24 @@ class PcrRunRepository:
         logger.info(f"Successfully created PcrRun with ID: {new_run.id}")
         return new_run
 
+    @log_repository_action("get_pcr_run_by_id")
+    def get_by_id(self, run_id: uuid.UUID) -> PcrRun | None:
+        """
+        Retrieves a PcrRun by its UUID using PEP 750 t-strings for security.
+        """
+        stmt = select(PcrRun).from_statement(
+            tstring(t"SELECT * FROM pcr_runs WHERE id = {run_id}")
+        )
+        return self.session.execute(stmt).scalars().first()
+
+    @log_repository_action("get_all_pcr_runs")
+    def get_all(self) -> list[PcrRun]:
+        """
+        Retrieves all PcrRun entities using PEP 750 t-strings.
+        """
+        stmt = select(PcrRun).from_statement(tstring(t"SELECT * FROM pcr_runs"))
+        return list(self.session.execute(stmt).scalars().all())
+
     @log_repository_action("get_pcr_run_by_identifier")
     def get_by_identifier(self, run_identifier: str) -> PcrRun | None:
         """
@@ -231,6 +247,16 @@ class SampleResultRepository:
             logger.info(f"Successfully fetched SampleResult '{result_id}'.")
         return result
 
+    @log_repository_action("get_sample_results_by_sample_id")
+    def get_by_sample_id(self, sample_id: uuid.UUID) -> list[SampleResult]:
+        """
+        Retrieves all SampleResult records associated with a specific Sample UUID.
+        """
+        stmt = select(SampleResult).from_statement(
+            tstring(t"SELECT * FROM sample_results WHERE sample_id = {sample_id}")
+        )
+        return list(self.session.execute(stmt).scalars().all())
+
     @log_repository_action("update_tech_validation")
     def update_tech_validation(
         self,
@@ -296,6 +322,14 @@ class TemplateRepository:
         logger.info(f"Successfully created AssayTemplate with ID: {new_template.id}")
         return new_template
 
+    @log_repository_action("get_all_active_templates")
+    def get_all_active(self) -> list[AssayTemplate]:
+        """Retrieves all active AssayTemplates using PEP 750 t-strings."""
+        stmt = select(AssayTemplate).from_statement(
+            tstring(t"SELECT * FROM assay_templates WHERE is_active = true")
+        )
+        return list(self.session.execute(stmt).scalars().all())
+
     @log_repository_action("get_template_by_identifier")
     def get_by_identifier(self, template_identifier: str) -> AssayTemplate | None:
         """
@@ -328,10 +362,11 @@ class TemplateRepository:
     def update(
         self,
         template_id: uuid.UUID,
-        multiplex_mapping: dict[str, Any],
+        multiplex_mapping: dict[str, Any] | None = None,
         description: str | None = None,
+        is_active: bool | None = None,
     ) -> AssayTemplate | None:
-        """Updates a template's mapping and description natively."""
+        """Updates a template's mapping, description, and/or active status natively."""
         template = self.get_by_id(template_id)
         if template is None:
             logger.warning(
@@ -339,9 +374,12 @@ class TemplateRepository:
             )
             return None
 
-        template.multiplex_mapping = multiplex_mapping
+        if multiplex_mapping is not None:
+            template.multiplex_mapping = multiplex_mapping
         if description is not None:
             template.description = description
+        if is_active is not None:
+            template.is_active = is_active
 
         self.session.flush()
         self.session.refresh(template)

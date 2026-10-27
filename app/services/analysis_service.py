@@ -2,7 +2,7 @@
 Analysis Service Module
 =======================
 Provides the core orchestration layer connecting data ingestion, mathematical
-signal processing, clustering, and persistence.
+signal processing, DBSCAN batch clustering, and persistence.
 """
 
 import functools
@@ -12,6 +12,8 @@ from typing import Any, Callable, ParamSpec, TypeVar
 
 from loguru import logger
 
+from app.core.analyzer import MeltCurveAnalyzer
+from app.core.classifier import ClusterClassifier
 from app.db.models import MeltCurve, Sample
 from app.exceptions import (
     ControlValidationFailedError,
@@ -130,7 +132,8 @@ class AnalysisService:
         user_id: uuid.UUID,
     ) -> dict[str, Any]:
         """
-        Processes a raw PCR cycler file through the mathematical pipeline and persists results.
+        Processes a raw PCR cycler file through the mathematical pipeline, executes
+        plate-wide DBSCAN clustering for thermal drift compensation, and persists results.
 
         :param file_content: Raw XML/CSV content from the cycler.
         :param filename: Original uploaded filename.
@@ -146,6 +149,18 @@ class AnalysisService:
             )
 
         multiplex_mapping = getattr(template, "multiplex_mapping", {}) or {}
+
+        # Optional per-template analyzer parameter override
+        if (
+            isinstance(self.analyzer, MeltCurveAnalyzer)
+            and isinstance(multiplex_mapping, dict)
+            and isinstance(multiplex_mapping.get("analyzer_config"), dict)
+        ):
+            active_analyzer: Any = MeltCurveAnalyzer.from_assay_config(
+                multiplex_mapping["analyzer_config"]
+            )
+        else:
+            active_analyzer = self.analyzer
 
         # 2. Data Parsing (supports XML and CSV with proper domain error translation)
         try:
@@ -194,12 +209,13 @@ class AnalysisService:
 
         persisted_results: list[dict[str, Any]] = []
         samples_by_well: dict[str, Sample] = {}
+        evaluated_wells: list[dict[str, Any]] = []
+        channel_peaks_pool: dict[str, list[float]] = {}
 
-        # 4. Channel-Isolated Math & Classification Loop
+        # 4a. Pass 1: Signal Processing & Peak Extraction across all wells
         for well_data in parsed_data:
             well_pos = well_data.get("well_position", "").lower()
 
-            # Reuse existing Sample entity for multiplexed channels in the same well
             sample = samples_by_well.get(well_pos)
             if sample is None:
                 sample = Sample(pcr_run_id=run_record.id, well_position=well_pos)
@@ -223,9 +239,8 @@ class AnalysisService:
             is_pc, is_ntc = self._is_control_well(well_pos)
             channel_ntc_rfu = ntc_curves_by_channel.get(channel) if channel else None
 
-            # Run peak detection
-            if hasattr(self.analyzer, "analyze"):
-                analysis_result = self.analyzer.analyze(
+            if hasattr(active_analyzer, "analyze"):
+                analysis_result = active_analyzer.analyze(
                     temperatures=temperatures,
                     patient_rfu=raw_fluorescence,
                     ntc_rfu=channel_ntc_rfu,
@@ -233,33 +248,84 @@ class AnalysisService:
                 peaks = analysis_result.get("tm_peaks", [])
                 escalated = analysis_result.get("requires_senior_validation", False)
             else:
-                peaks = self.analyzer.analyze_curve(temperatures, raw_fluorescence)
+                peaks = active_analyzer.analyze_curve(temperatures, raw_fluorescence)
                 escalated = False
 
-            # Extract multiplex mapping for the current channel
+            if channel and not is_ntc and peaks:
+                channel_peaks_pool.setdefault(channel, []).extend(peaks)
+
+            evaluated_wells.append(
+                {
+                    "well_pos": well_pos,
+                    "sample": sample,
+                    "channel": channel,
+                    "peaks": peaks,
+                    "escalated": escalated,
+                    "is_pc": is_pc,
+                    "is_ntc": is_ntc,
+                }
+            )
+
+        # 4b. Pass 2: Plate-wide DBSCAN Drift Estimation per Channel
+        channel_drift_stats: dict[str, dict[str, Any]] = {}
+        if isinstance(self.classifier, ClusterClassifier):
+            for chan, pooled_peaks in channel_peaks_pool.items():
+                _, exp_tms = self._extract_channel_targets(multiplex_mapping, chan)
+                if exp_tms:
+                    channel_drift_stats[chan] = self.classifier.estimate_run_drift(
+                        channel_peaks=pooled_peaks,
+                        expected_tms=exp_tms,
+                    )
+
+        # 4c. Pass 3: Target Classification, QC Gates & Persistence
+        for item in evaluated_wells:
+            well_pos = item["well_pos"]
+            sample = item["sample"]
+            channel = item["channel"]
+            peaks = item["peaks"]
+            escalated = item["escalated"]
+            is_pc = item["is_pc"]
+            is_ntc = item["is_ntc"]
+
             target_names, expected_tms = self._extract_channel_targets(
                 multiplex_mapping, channel
             )
 
-            # Run ML classification
             classified_targets: dict[str, bool] = {}
+            clustering_details: dict[str, dict[str, Any]] = {}
+
             if target_names and expected_tms:
+                drift_info = channel_drift_stats.get(channel, {})
+                thermal_shift = float(drift_info.get("thermal_shift", 0.0))
+                shifted_peaks = [float(p - thermal_shift) for p in peaks]
+
+                # Always invoke classify_channel_targets for strict contract/mock compatibility
                 classified_targets = self.classifier.classify_channel_targets(
-                    detected_peaks=peaks,
+                    detected_peaks=shifted_peaks,
                     target_names=target_names,
                     expected_tms=expected_tms,
                 )
 
+                if isinstance(self.classifier, ClusterClassifier):
+                    clustering_details = (
+                        self.classifier.classify_with_clustering_details(
+                            detected_peaks=peaks,
+                            target_names=target_names,
+                            expected_tms=expected_tms,
+                            tolerance=float(drift_info.get("adaptive_tolerance", 0.5)),
+                            thermal_shift=thermal_shift,
+                            outlier_peaks=drift_info.get("outlier_peaks", []),
+                        )
+                    )
+
             # 5. Quality Control (QC) Gates
             if is_pc:
-                # Positive Control must detect at least one true target
                 if not any(classified_targets.values()):
                     raise ControlValidationFailedError(
                         f"Positive Control failure in well {well_pos}: No targets detected."
                     )
 
             if is_ntc:
-                # Negative Control must have no peaks and no contamination escalation
                 if len(peaks) > 0 or escalated:
                     raise ControlValidationFailedError(
                         f"Negative Control contamination in well {well_pos}."
@@ -267,18 +333,31 @@ class AnalysisService:
 
             # 6. Persistence
             for target_name, is_positive in classified_targets.items():
+                detail = clustering_details.get(target_name, {})
+                needs_escalation = escalated or bool(
+                    detail.get("requires_senior_validation", False)
+                )
+                default_label = (
+                    "Escalated"
+                    if needs_escalation
+                    else ("Wildtype" if is_positive else "Negative")
+                )
+                cluster_label = str(detail.get("cluster_label", default_label))
+
                 result_record = self.result_repo.create(
                     sample_id=sample.id,
                     target_name=target_name,
                     algo_is_positive=is_positive,
                     algo_tm_peaks=peaks,
-                    cluster_label="Escalated" if escalated else "Standard",
+                    cluster_label=cluster_label,
                 )
                 persisted_results.append(
                     {
                         "id": str(result_record.id),
                         "target": target_name,
                         "positive": is_positive,
+                        "cluster_label": cluster_label,
+                        "requires_senior_validation": needs_escalation,
                     }
                 )
 
