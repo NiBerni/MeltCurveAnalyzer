@@ -13,11 +13,11 @@ dependencies = [
     "loguru>=0.7.3",
     "numpy>=2.5.1",
     "pandas>=3.0.3",
-    "psycopg3.3.4",
+    "psycopg==3.3.4",
     "psycopg-binary>=3.3.4",
     "python-dotenv>=1.2.3",
     "scikit-learn>=1.9.0",
-    "scipy1.18.0",
+    "scipy==1.18.0",
     "sqlalchemy==2.1.0b3",
     "werkzeug>=3.1.8",
 ]

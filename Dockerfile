@@ -4,8 +4,8 @@ FROM python:3.14-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    UV_SYSTEM_PYTHON=1
-    UV_PROJECT_ENVIRONMENT=/app/.venv
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 

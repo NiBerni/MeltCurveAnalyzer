@@ -131,8 +131,9 @@ ENV/
 env.bak/
 venv.bak/
 .git
-.ruff-cach/
+.ruff_cach/
 .junie/
+.github/
 
 # Spyder project settings
 .spyderproject

@@ -1,13 +1,11 @@
 import uuid
 from collections.abc import Generator
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from app.core.classifier import ClusterClassifier
 from app.exceptions import (
-    ControlValidationFailedError,
     DataParsingError,
     TemplateNotFoundError,
 )
@@ -189,16 +187,17 @@ def test_process_run_csv_dispatch_and_parsing_error_translation(
     mock_parser.parse_csv_mvp.assert_called_once()
 
 
-def test_process_run_invalid_positive_control(
+def test_process_run_invalid_positive_control_triggers_escalation(
     analysis_service: AnalysisService,
     mock_parser: MagicMock,
     mock_analyzer: MagicMock,
     mock_classifier: MagicMock,
     mock_template_repo: MagicMock,
+    mock_result_repo: MagicMock,
 ) -> None:
     """
     Test that a failing positive control (e.g. PC detects 0 targets instead of required targets)
-    invalidates the run and raises a ControlValidationFailedError.
+    does not abort the run, but flags requires_senior_validation as True for senior sign-off.
     """
     file_content = b"<xml>dummy data</xml>"
     filename = "test_run.xml"
@@ -229,27 +228,40 @@ def test_process_run_invalid_positive_control(
     }
     mock_classifier.classify_channel_targets.return_value = {"Target A": False}
 
-    with pytest.raises(
-        ControlValidationFailedError, match=r"(?i)positive control|PC|control"
-    ):
-        analysis_service.process_run(
-            file_content=file_content,
-            filename=filename,
-            template_identifier=template_identifier,
-            user_id=user_id,
-        )
+    # Mock database object creation return values
+    mock_run_db_obj = MagicMock()
+    mock_run_db_obj.id = uuid.uuid4()
+    analysis_service.run_repo.create.return_value = mock_run_db_obj
+
+    mock_result_db_obj = MagicMock()
+    mock_result_db_obj.id = uuid.uuid4()
+    mock_result_repo.create.return_value = mock_result_db_obj
+
+    # Executing process_run now completes successfully (201 Created equivalent) instead of raising
+    result = analysis_service.process_run(
+        file_content=file_content,
+        filename=filename,
+        template_identifier=template_identifier,
+        user_id=user_id,
+    )
+
+    assert isinstance(result, dict)
+    assert "results" in result
+    # Verify that the failure on the control well successfully escalated the run
+    assert any(res["requires_senior_validation"] is True for res in result["results"])
 
 
-def test_process_run_invalid_negative_control(
+def test_process_run_invalid_negative_control_triggers_escalation(
     analysis_service: AnalysisService,
     mock_parser: MagicMock,
     mock_analyzer: MagicMock,
     mock_classifier: MagicMock,
     mock_template_repo: MagicMock,
+    mock_result_repo: MagicMock,
 ) -> None:
     """
     Test that a contaminated negative control (NTC detects peaks / triggers analyzer escalation)
-    invalidates the run and raises a ControlValidationFailedError.
+    does not abort the run, but flags requires_senior_validation as True.
     """
     file_content = b"<xml>dummy data</xml>"
     filename = "test_run.xml"
@@ -280,15 +292,24 @@ def test_process_run_invalid_negative_control(
     }
     mock_classifier.classify_channel_targets.return_value = {"Target A": True}
 
-    with pytest.raises(
-        ControlValidationFailedError, match=r"(?i)negative control|NTC|contamination"
-    ):
-        analysis_service.process_run(
-            file_content=file_content,
-            filename=filename,
-            template_identifier=template_identifier,
-            user_id=user_id,
-        )
+    mock_run_db_obj = MagicMock()
+    mock_run_db_obj.id = uuid.uuid4()
+    analysis_service.run_repo.create.return_value = mock_run_db_obj
+
+    mock_result_db_obj = MagicMock()
+    mock_result_db_obj.id = uuid.uuid4()
+    mock_result_repo.create.return_value = mock_result_db_obj
+
+    result = analysis_service.process_run(
+        file_content=file_content,
+        filename=filename,
+        template_identifier=template_identifier,
+        user_id=user_id,
+    )
+
+    assert isinstance(result, dict)
+    assert "results" in result
+    assert any(res["requires_senior_validation"] is True for res in result["results"])
 
 
 def test_process_run_pcr_substring_not_misidentified_as_pc_and_dbscan_drift(

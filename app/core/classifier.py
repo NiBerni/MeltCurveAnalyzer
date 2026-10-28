@@ -27,7 +27,7 @@ def validate_classification_inputs(
         detected_peaks: list[float],
         target_names: list[str],
         expected_tms: list[float],
-        tolerance: float = 1.5,
+        tolerance: float = 0.5,
     ) -> dict[str, bool]:
         if len(target_names) != len(expected_tms):
             raise ValueError("Length of target_names and expected_tms must be equal.")

@@ -6,12 +6,12 @@ Operator,lab_operator
 
 [MeltCurveData]
 Well,Channel,Sample_ID,Target,Temperature,Fluorescence,Derivative
-NTC_Well,FAM,NTC_01,SARS-CoV-2,74.0,10.0,0.01
-NTC_Well,FAM,NTC_01,SARS-CoV-2,76.0,9.9,0.01
-NTC_Well,FAM,NTC_01,SARS-CoV-2,78.5,9.8,0.02
-NTC_Well,FAM,NTC_01,SARS-CoV-2,81.0,9.7,0.01
-NTC_Well,FAM,NTC_01,SARS-CoV-2,83.2,9.6,0.01
-NTC_Well,FAM,NTC_01,SARS-CoV-2,86.0,9.5,0.01
+NTC_Well,FAM,ntc_01,SARS-CoV-2,74.0,10.0,0.01
+NTC_Well,FAM,ntc_01,SARS-CoV-2,76.0,9.9,0.01
+NTC_Well,FAM,ntc_01,SARS-CoV-2,78.5,9.8,0.02
+NTC_Well,FAM,ntc_01,SARS-CoV-2,81.0,9.7,0.01
+NTC_Well,FAM,ntc_01,SARS-CoV-2,83.2,9.6,0.01
+NTC_Well,FAM,ntc_01,SARS-CoV-2,86.0,9.5,0.01
 PC_Well,FAM,PC_01,SARS-CoV-2,74.0,1000.0,2.1
 PC_Well,FAM,PC_01,SARS-CoV-2,76.0,950.0,15.4
 PC_Well,FAM,PC_01,SARS-CoV-2,78.5,600.0,240.5

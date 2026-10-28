@@ -236,18 +236,22 @@ dependencies = [
     { name = "loguru" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "pandas-stubs" },
     { name = "psycopg" },
     { name = "psycopg-binary" },
-    { name = "pylint" },
-    { name = "pytest" },
     { name = "python-dotenv" },
-    { name = "ruff" },
     { name = "scikit-learn" },
     { name = "scipy" },
-    { name = "scipy-stubs" },
     { name = "sqlalchemy" },
     { name = "werkzeug" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pandas-stubs" },
+    { name = "pylint" },
+    { name = "pytest" },
+    { name = "ruff" },
+    { name = "scipy-stubs" },
 ]
 
 [package.metadata]
@@ -259,18 +263,22 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "numpy", specifier = ">=2.5.1" },
     { name = "pandas", specifier = ">=3.0.3" },
-    { name = "pandas-stubs", specifier = "~=3.0.3" },
     { name = "psycopg", specifier = "==3.3.4" },
     { name = "psycopg-binary", specifier = ">=3.3.4" },
-    { name = "pylint", specifier = ">=4.0.6" },
-    { name = "pytest", specifier = ">=9.1.1" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
-    { name = "ruff", specifier = ">=0.15.21" },
     { name = "scikit-learn", specifier = ">=1.9.0" },
     { name = "scipy", specifier = "==1.18.0" },
-    { name = "scipy-stubs", specifier = "~=1.18.0" },
     { name = "sqlalchemy", specifier = "==2.1.0b3" },
     { name = "werkzeug", specifier = ">=3.1.8" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pandas-stubs", specifier = "~=3.0.3" },
+    { name = "pylint", specifier = ">=4.0.6" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "ruff", specifier = ">=0.15.21" },
+    { name = "scipy-stubs", specifier = "~=1.18.0" },
 ]
 
 [[package]]

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b8f9c2d1-4a7e-4c11-9d3a-7e6f5a4b3c2d",
     "name": "AI-Driven PCR Melt Curve Analyzer (Beta-Publish-Ready)",
-    "description": "End-to-End REST API Test Suite for the AI-Driven PCR Melt Curve Analyzer LIMS.\n\nFeatures:\n- Automatic JWT token extraction into `{{jwt_token}}` upon login.\n- Automatic UUID chaining (`{{created_user_id}}`, `{{template_uuid}}`, `{{custom_template_id}}`, `{{run_id}}`, `{{result_id}}`).\n- Full RBAC coverage (`Admin`, `Senior`, `Validator`, `Operator`).",
+    "description": "End-to-End REST API Test Suite for the AI-Driven PCR Melt Curve Analyzer LIMS.\n\nFeatures:\n- Automatic JWT token extraction into `{{jwt_token}}` upon login.\n- Automatic variable initialization & UUID chaining (`{{template_identifier}}`, `{{template_uuid}}`, `{{created_user_id}}`, `{{operator_user_id}}`, `{{custom_template_id}}`, `{{run_id}}`, `{{result_id}}`).\n- Full RBAC coverage (`Admin`, `Senior`, `Validator`, `Operator`).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -15,7 +15,39 @@
       }
     ]
   },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Ensure core defaults are always resolved in collectionVariables and never shadowed by empty environment vars",
+          "const defaultBaseUrl = pm.collectionVariables.get('base_url') || pm.collectionVariables.get('baseUrl') || 'http://localhost:8000';",
+          "pm.collectionVariables.set('base_url', defaultBaseUrl);",
+          "pm.collectionVariables.set('baseUrl', defaultBaseUrl);",
+          "",
+          "const currentTpl = pm.collectionVariables.get('template_identifier');",
+          "if (!currentTpl || currentTpl.trim() === '') {",
+          "    pm.collectionVariables.set('template_identifier', 'COMPREHENSIVE_MULTIPLEX_V1');",
+          "}",
+          "",
+          "if (pm.environment && pm.environment.name) {",
+          "    if (!pm.environment.get('base_url')) pm.environment.set('base_url', defaultBaseUrl);",
+          "    if (!pm.environment.get('baseUrl')) pm.environment.set('baseUrl', defaultBaseUrl);",
+          "    if (!pm.environment.get('template_identifier')) {",
+          "        pm.environment.set('template_identifier', pm.collectionVariables.get('template_identifier'));",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
   "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
     {
       "key": "baseUrl",
       "value": "http://localhost:8000",
@@ -83,8 +115,10 @@
                   "});",
                   "",
                   "if (jsonData.access_token) {",
-                  "    pm.collectionVariables.set('jwt_token', jsonData.access_token);",
-                  "    pm.environment.set('jwt_token', jsonData.access_token);",
+                  "    pm.collectionVariables.set('jwt_token', String(jsonData.access_token));",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('jwt_token', String(jsonData.access_token));",
+                  "    }",
                   "    console.log('Successfully stored Admin JWT into {{jwt_token}}');",
                   "}"
                 ],
@@ -108,9 +142,9 @@
               "raw": "{\n  \"username\": \"admin_master\",\n  \"password\": \"AdminMasterPassword2026!\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/auth/login",
+              "raw": "{{base_url}}/api/auth/login",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -133,8 +167,10 @@
                   "});",
                   "const jsonData = pm.response.json();",
                   "if (jsonData.access_token) {",
-                  "    pm.collectionVariables.set('jwt_token', jsonData.access_token);",
-                  "    pm.environment.set('jwt_token', jsonData.access_token);",
+                  "    pm.collectionVariables.set('jwt_token', String(jsonData.access_token));",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('jwt_token', String(jsonData.access_token));",
+                  "    }",
                   "    console.log('Switched active {{jwt_token}} to Operator role.');",
                   "}"
                 ],
@@ -158,9 +194,9 @@
               "raw": "{\n  \"username\": \"lab_operator\",\n  \"password\": \"OperatorPass2026!\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/auth/login",
+              "raw": "{{base_url}}/api/auth/login",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -195,9 +231,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/auth/me",
+              "raw": "{{base_url}}/api/auth/me",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -231,9 +267,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/users",
+              "raw": "{{base_url}}/api/users",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -254,8 +290,10 @@
                   "});",
                   "const data = pm.response.json();",
                   "if (data.id) {",
-                  "    pm.collectionVariables.set('created_user_id', data.id);",
-                  "    pm.environment.set('created_user_id', data.id);",
+                  "    pm.collectionVariables.set('created_user_id', String(data.id));",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('created_user_id', String(data.id));",
+                  "    }",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -275,9 +313,9 @@
               "raw": "{\n  \"username\": \"dr_mueller_senior\",\n  \"email\": \"mueller.senior@lims.local\",\n  \"password\": \"SeniorSecurePass2026!\",\n  \"roles\": [\"Senior\", \"Validator\"]\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/users",
+              "raw": "{{base_url}}/api/users",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -298,8 +336,10 @@
                   "});",
                   "const data = pm.response.json();",
                   "if (data.id) {",
-                  "    pm.collectionVariables.set('operator_user_id', data.id);",
-                  "    pm.environment.set('operator_user_id', data.id);",
+                  "    pm.collectionVariables.set('operator_user_id', String(data.id));",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('operator_user_id', String(data.id));",
+                  "    }",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -319,9 +359,9 @@
               "raw": "{\n  \"username\": \"ta_routine_01\",\n  \"email\": \"ta_routine_01@lims.local\",\n  \"password\": \"RoutineOperator2026!\",\n  \"roles\": [\"Operator\"]\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/users",
+              "raw": "{{base_url}}/api/users",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -358,9 +398,9 @@
               "raw": "{\n  \"email\": \"dr.mueller.updated@lims.local\",\n  \"password\": \"UpdatedSeniorPass2026!\",\n  \"is_active\": true\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/users/{{created_user_id}}",
+              "raw": "{{base_url}}/api/users/{{created_user_id}}",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -389,9 +429,9 @@
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/users/{{operator_user_id}}",
+              "raw": "{{base_url}}/api/users/{{operator_user_id}}",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -417,10 +457,17 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "const templates = pm.response.json();",
-                  "const seeded = templates.find(t => t.identifier === 'COMPREHENSIVE_MULTIPLEX_V1');",
-                  "if (seeded) {",
-                  "    pm.collectionVariables.set('template_uuid', seeded.id);",
-                  "    pm.environment.set('template_uuid', seeded.id);",
+                  "if (Array.isArray(templates) && templates.length > 0) {",
+                  "    const seeded = templates.find(t => (t.identifier || t.template_identifier || t.name) === 'COMPREHENSIVE_MULTIPLEX_V1') || templates[0];",
+                  "    const tplId = String(seeded.id);",
+                  "    const tplIdentifier = String(seeded.identifier || seeded.template_identifier || seeded.name || 'COMPREHENSIVE_MULTIPLEX_V1');",
+                  "    pm.collectionVariables.set('template_uuid', tplId);",
+                  "    pm.collectionVariables.set('template_identifier', tplIdentifier);",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('template_uuid', tplId);",
+                  "        pm.environment.set('template_identifier', tplIdentifier);",
+                  "    }",
+                  "    console.log('Captured template_uuid:', tplId, 'and template_identifier:', tplIdentifier);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -431,9 +478,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/templates",
+              "raw": "{{base_url}}/api/templates",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -465,9 +512,9 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/templates/{{template_uuid}}",
+              "raw": "{{base_url}}/api/templates/{{template_uuid}}",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -489,8 +536,10 @@
                   "});",
                   "const data = pm.response.json();",
                   "if (data.id) {",
-                  "    pm.collectionVariables.set('custom_template_id', data.id);",
-                  "    pm.environment.set('custom_template_id', data.id);",
+                  "    pm.collectionVariables.set('custom_template_id', String(data.id));",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('custom_template_id', String(data.id));",
+                  "    }",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -510,9 +559,9 @@
               "raw": "{\n  \"template_identifier\": \"DERMA_FUNGAL_PANEL_V1\",\n  \"multiplex_mapping\": {\n    \"FAM\": {\n      \"targets\": [\"T_rubrum\", \"T_interdigitale\"],\n      \"expected_tms\": [79.2, 83.8]\n    },\n    \"HEX\": {\n      \"targets\": [\"C_albicans\", \"IC_Control\"],\n      \"expected_tms\": [75.4, 81.0]\n    }\n  },\n  \"description\": \"Dermatophyte multiplex melt curve panel.\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/templates",
+              "raw": "{{base_url}}/api/templates",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -523,6 +572,19 @@
         },
         {
           "name": "3.4 Update Template Mapping & Description",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "PUT",
             "header": [
@@ -536,9 +598,9 @@
               "raw": "{\n  \"multiplex_mapping\": {\n    \"FAM\": {\n      \"targets\": [\"T_rubrum\", \"T_interdigitale\"],\n      \"expected_tms\": [79.4, 84.0]\n    },\n    \"HEX\": {\n      \"targets\": [\"C_albicans\", \"IC_Control\"],\n      \"expected_tms\": [75.4, 81.0]\n    }\n  },\n  \"description\": \"Updated Tm calibration for Lot #2026-10.\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/templates/{{custom_template_id}}",
+              "raw": "{{base_url}}/api/templates/{{custom_template_id}}",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -550,6 +612,19 @@
         },
         {
           "name": "3.5 Toggle Template Active Status (Deactivate)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "PUT",
             "header": [
@@ -563,9 +638,9 @@
               "raw": "{\n  \"is_active\": false\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/templates/{{custom_template_id}}",
+              "raw": "{{base_url}}/api/templates/{{custom_template_id}}",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -577,13 +652,26 @@
         },
         {
           "name": "3.6 Soft-Delete Custom Template",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/templates/{{custom_template_id}}",
+              "raw": "{{base_url}}/api/templates/{{custom_template_id}}",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -602,6 +690,20 @@
           "name": "4.1 Upload Cycler Run File (Requires GDPR Consent)",
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Guarantee that {{template_identifier}} is resolved before multipart/form-data serialization",
+                  "const tplId = pm.collectionVariables.get('template_identifier') || 'COMPREHENSIVE_MULTIPLEX_V1';",
+                  "pm.collectionVariables.set('template_identifier', tplId);",
+                  "if (pm.environment && pm.environment.name) {",
+                  "    pm.environment.set('template_identifier', tplId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "exec": [
@@ -609,16 +711,24 @@
                   "    pm.response.to.have.status(201);",
                   "});",
                   "const data = pm.response.json();",
-                  "if (data.run_id) {",
-                  "    pm.collectionVariables.set('run_id', data.run_id);",
-                  "    pm.environment.set('run_id', data.run_id);",
+                  "const resolvedRunId = data.run_id || data.id;",
+                  "if (resolvedRunId) {",
+                  "    pm.collectionVariables.set('run_id', String(resolvedRunId));",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('run_id', String(resolvedRunId));",
+                  "    }",
+                  "    console.log('Captured run_id:', resolvedRunId);",
                   "}",
-                  "if (data.results && data.results.length > 0) {",
+                  "if (Array.isArray(data.results) && data.results.length > 0) {",
                   "    const escalated = data.results.find(r => r.requires_senior_validation === true);",
                   "    const targetResult = escalated ? escalated : data.results[0];",
-                  "    pm.collectionVariables.set('result_id', targetResult.id);",
-                  "    pm.environment.set('result_id', targetResult.id);",
-                  "    console.log('Captured result_id for technical validation:', targetResult.id);",
+                  "    if (targetResult && targetResult.id) {",
+                  "        pm.collectionVariables.set('result_id', String(targetResult.id));",
+                  "        if (pm.environment && pm.environment.name) {",
+                  "            pm.environment.set('result_id', String(targetResult.id));",
+                  "        }",
+                  "        console.log('Captured result_id for technical validation:', targetResult.id);",
+                  "    }",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -645,16 +755,16 @@
                 },
                 {
                   "key": "file",
-                  "description": "Select data/demo_6channel_run.csv or a Roche XML export",
+                  "description": "Select data/demo_6channel_run.csv or data/roche_run_anonymized.xml",
                   "type": "file",
                   "src": "data/demo_6channel_run.csv"
                 }
               ]
             },
             "url": {
-              "raw": "{{baseUrl}}/api/runs/upload",
+              "raw": "{{base_url}}/api/runs/upload",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -666,13 +776,34 @@
         },
         {
           "name": "4.2 List All Ingested PCR Runs (GET /api/runs)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const runs = pm.response.json();",
+                  "if (!pm.collectionVariables.get('run_id') && Array.isArray(runs) && runs.length > 0) {",
+                  "    const latestRunId = String(runs[runs.length - 1].run_id || runs[runs.length - 1].id);",
+                  "    pm.collectionVariables.set('run_id', latestRunId);",
+                  "    if (pm.environment && pm.environment.name) {",
+                  "        pm.environment.set('run_id', latestRunId);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/runs",
+              "raw": "{{base_url}}/api/runs",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -683,13 +814,39 @@
         },
         {
           "name": "4.3 Get Full Run Details, Curves & ML Clusters (GET /api/runs/:id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const runData = pm.response.json();",
+                  "if (!pm.collectionVariables.get('result_id') && Array.isArray(runData.samples)) {",
+                  "    for (const s of runData.samples) {",
+                  "        if (Array.isArray(s.results) && s.results.length > 0) {",
+                  "            const fallbackResultId = String(s.results[0].id || s.results[0].result_id);",
+                  "            pm.collectionVariables.set('result_id', fallbackResultId);",
+                  "            if (pm.environment && pm.environment.name) {",
+                  "                pm.environment.set('result_id', fallbackResultId);",
+                  "            }",
+                  "            break;",
+                  "        }",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/runs/{{run_id}}",
+              "raw": "{{base_url}}/api/runs/{{run_id}}",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",
@@ -736,9 +893,9 @@
               "raw": "{\n  \"is_positive\": true,\n  \"override_reason\": \"Technical validation sign-off: Tm peak verified against positive control cluster.\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/results/{{result_id}}/validate",
+              "raw": "{{base_url}}/api/results/{{result_id}}/validate",
               "host": [
-                "{{baseUrl}}"
+                "{{base_url}}"
               ],
               "path": [
                 "api",

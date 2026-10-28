@@ -16,7 +16,6 @@ from app.core.analyzer import MeltCurveAnalyzer
 from app.core.classifier import ClusterClassifier
 from app.db.models import MeltCurve, Sample
 from app.exceptions import (
-    ControlValidationFailedError,
     DataParsingError,
     TemplateNotFoundError,
 )
@@ -134,6 +133,8 @@ class AnalysisService:
         """
         Processes a raw PCR cycler file through the mathematical pipeline, executes
         plate-wide DBSCAN clustering for thermal drift compensation, and persists results.
+        Missing or failing controls (PC/NTC) do not abort the run; instead, they trigger
+        automatic senior validation escalation while preserving full database persistence.
 
         :param file_content: Raw XML/CSV content from the cycler.
         :param filename: Original uploaded filename.
@@ -266,6 +267,25 @@ class AnalysisService:
                 }
             )
 
+        # Check whether the run includes dedicated PC and NTC wells
+        has_pc_well = any(item["is_pc"] for item in evaluated_wells)
+        has_ntc_well = any(item["is_ntc"] for item in evaluated_wells)
+        run_control_escalation = False
+
+        if not has_pc_well:
+            logger.warning(
+                f"No Positive Control (PC) well detected in run '{unique_run_identifier}'. "
+                "Escalating run results for senior technical validation."
+            )
+            run_control_escalation = True
+
+        if not has_ntc_well:
+            logger.warning(
+                f"No Negative Control (NTC) well detected in run '{unique_run_identifier}'. "
+                "Escalating run results for senior technical validation."
+            )
+            run_control_escalation = True
+
         # 4b. Pass 2: Plate-wide DBSCAN Drift Estimation per Channel
         channel_drift_stats: dict[str, dict[str, Any]] = {}
         if isinstance(self.classifier, ClusterClassifier):
@@ -277,13 +297,14 @@ class AnalysisService:
                         expected_tms=exp_tms,
                     )
 
-        # 4c. Pass 3: Target Classification, QC Gates & Persistence
+        # 4c. Pass 3a: Target Classification & Graceful Control QC Evaluation
+        classified_wells: list[dict[str, Any]] = []
         for item in evaluated_wells:
             well_pos = item["well_pos"]
             sample = item["sample"]
             channel = item["channel"]
             peaks = item["peaks"]
-            escalated = item["escalated"]
+            escalated = bool(item["escalated"])
             is_pc = item["is_pc"]
             is_ntc = item["is_ntc"]
 
@@ -318,24 +339,47 @@ class AnalysisService:
                         )
                     )
 
-            # 5. Quality Control (QC) Gates
-            if is_pc:
-                if not any(classified_targets.values()):
-                    raise ControlValidationFailedError(
-                        f"Positive Control failure in well {well_pos}: No targets detected."
-                    )
+            # 5. Graceful Quality Control (QC) Gates (Escalate instead of raising exception)
+            if is_pc and not any(classified_targets.values()):
+                logger.warning(
+                    f"Positive Control failure in well '{well_pos}' (channel '{channel}'): "
+                    "No expected targets detected. Escalating run for senior validation."
+                )
+                escalated = True
+                run_control_escalation = True
 
-            if is_ntc:
-                if len(peaks) > 0 or escalated:
-                    raise ControlValidationFailedError(
-                        f"Negative Control contamination in well {well_pos}."
-                    )
+            if is_ntc and (len(peaks) > 0 or escalated):
+                logger.warning(
+                    f"Negative Control contamination or baseline anomaly in well '{well_pos}' "
+                    f"(channel '{channel}', peaks={peaks}). Escalating run for senior validation."
+                )
+                escalated = True
+                run_control_escalation = True
 
-            # 6. Persistence
+            classified_wells.append(
+                {
+                    "sample": sample,
+                    "peaks": peaks,
+                    "escalated": escalated,
+                    "classified_targets": classified_targets,
+                    "clustering_details": clustering_details,
+                }
+            )
+
+        # 6. Pass 3b: Database Persistence across all samples and controls
+        for well_entry in classified_wells:
+            sample = well_entry["sample"]
+            peaks = well_entry["peaks"]
+            well_escalated = well_entry["escalated"]
+            classified_targets = well_entry["classified_targets"]
+            clustering_details = well_entry["clustering_details"]
+
             for target_name, is_positive in classified_targets.items():
                 detail = clustering_details.get(target_name, {})
-                needs_escalation = escalated or bool(
-                    detail.get("requires_senior_validation", False)
+                needs_escalation = (
+                    well_escalated
+                    or run_control_escalation
+                    or bool(detail.get("requires_senior_validation", False))
                 )
                 default_label = (
                     "Escalated"
