@@ -1,4 +1,4 @@
-# 🧬 AI-Driven PCR Melt Curve Analyzer (Beta)
+# 🧬 AI-Driven PCR Melt Curve Analyzer (WiP)
 
 ![Python](https://img.shields.io/badge/Python-3.14-blue.svg?style=flat-square&logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-3.1.3-green.svg?style=flat-square&logo=flask&logoColor=white)
